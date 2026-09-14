@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: career_intelligence_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: career_intelligence
+      POSTGRES_USER: career_user
+      POSTGRES_PASSWORD: career_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
