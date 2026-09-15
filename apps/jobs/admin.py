@@ -23,3 +23,5 @@ class JobAdmin(admin.ModelAdmin):
         "company_name",
         "description",
     )
+
+    filter_horizontal = ("skills",)
