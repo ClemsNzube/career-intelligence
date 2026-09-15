@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'apps.users',
     'apps.jobs',
+    'apps.skills',
 
 ]
 
@@ -144,3 +145,5 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+AUTH_USER_MODEL = 'users.User'
