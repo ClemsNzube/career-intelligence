@@ -1,6 +1,8 @@
 from django.urls import path
-from .views import JobListAPIView
+
+from .views import JobDetailAPIView, JobListCreateAPIView
 
 urlpatterns = [
-    path("", JobListAPIView.as_view(), name="job-list"),
+    path("", JobListCreateAPIView.as_view(), name="job-list"),
+    path("<int:pk>/", JobDetailAPIView.as_view(), name="job-detail"),
 ]
