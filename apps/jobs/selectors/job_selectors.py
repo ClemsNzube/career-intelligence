@@ -16,4 +16,4 @@ def get_jobs(*, search: str | None = None, work_type: str | None = None, employm
     if employment_type:
         queryset = queryset.filter(employment_type=employment_type)
 
-    return queryset
+    return queryset.distinct()
