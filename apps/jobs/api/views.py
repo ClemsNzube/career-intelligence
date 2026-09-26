@@ -1,15 +1,22 @@
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 
+from apps.jobs.api.schema import job_detail_schema, job_list_schema
 from apps.jobs.api.serializers import JobSerializer
 from apps.jobs.models import Job
 
 
+@job_list_schema
 class JobListCreateAPIView(ListCreateAPIView):
     serializer_class = JobSerializer
 
     def get_queryset(self):
         queryset = Job.objects.prefetch_related("skills").all()
+
+        include_expired = str(self.request.query_params.get("include_expired", "false")).lower() == "true"
+        if not include_expired:
+            queryset = queryset.filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
 
         search = self.request.query_params.get("search", "").strip()
         work_type = self.request.query_params.get("work_type")
@@ -67,6 +74,7 @@ class JobListCreateAPIView(ListCreateAPIView):
         return queryset
 
 
+@job_detail_schema
 class JobDetailAPIView(RetrieveUpdateDestroyAPIView):
     queryset = Job.objects.prefetch_related("skills").all()
     serializer_class = JobSerializer

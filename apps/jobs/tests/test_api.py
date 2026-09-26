@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -74,3 +77,62 @@ class JobAPITest(APITestCase):
         delete_response = self.client.delete(detail_url)
 
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_duplicate_external_ids_are_rejected(self):
+        payload = {
+            "title": "Senior Python Developer",
+            "company_name": "Example Corp",
+            "description": "Build backend services and APIs.",
+            "location": "Remote",
+            "work_type": "remote",
+            "employment_type": "full_time",
+            "application_url": "https://example.com/jobs/1",
+            "source": "linkedin",
+            "external_id": "linkedin-123",
+            "skills": ["Python"],
+        }
+
+        response = self.client.post("/api/jobs/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_expired_jobs_are_filtered_and_marked(self):
+        expired = Job.objects.create(
+            title="Expired Job",
+            company_name="Old Company",
+            description="No longer active.",
+            location="Remote",
+            work_type="remote",
+            employment_type="contract",
+            application_url="https://example.com/jobs/old",
+            source="linkedin",
+            external_id="old-123",
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+        expired.skills.set([self.skill_python])
+
+        response = self.client.get("/api/jobs/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["title"], "Senior Python Developer")
+        self.assertFalse(response.data["results"][0]["is_expired"])
+
+    def test_titles_and_descriptions_are_normalized(self):
+        payload = {
+            "title": "  senior   python   developer  ",
+            "company_name": "Example Corp",
+            "description": "<p>   Build   backend   services   and   APIs.   </p>",
+            "location": "Remote",
+            "work_type": "remote",
+            "employment_type": "full_time",
+            "application_url": "https://example.com/jobs/normalized",
+            "source": "linkedin",
+            "external_id": "linkedin-normalized",
+            "skills": ["Python", "Django"],
+        }
+
+        response = self.client.post("/api/jobs/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["title"], "Senior Python Developer")
+        self.assertEqual(response.data["description"], "Build backend services and APIs.")
