@@ -6,7 +6,7 @@ DEFAULT_RECOMMENDATION_LIMIT = 20
 
 
 def recommend_jobs(profile, jobs, limit=DEFAULT_RECOMMENDATION_LIMIT):
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError("limit must be a positive integer.")
 
     scored_jobs = []
@@ -15,7 +15,9 @@ def recommend_jobs(profile, jobs, limit=DEFAULT_RECOMMENDATION_LIMIT):
         components = {name: result[name] for name in ("skill", "experience", "work_type", "location", "title")}
         scored_jobs.append({"job": job, "components": components, **result})
 
-    ranked_jobs = sorted(scored_jobs, key=lambda item: (-item["score"], item["job"].pk))[:limit]
+    ranked_jobs = sorted(scored_jobs, key=lambda item: (-item["score"], item["job"].pk))
+    if limit is not None:
+        ranked_jobs = ranked_jobs[:limit]
 
     return [{"rank": rank, **item} for rank, item in enumerate(ranked_jobs, start=1)]
 

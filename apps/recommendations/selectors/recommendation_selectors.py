@@ -10,4 +10,9 @@ def get_profile_for_user(user):
 
 
 def get_available_jobs():
-    return Job.objects.prefetch_related("skills").filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+    return (
+        Job.objects.prefetch_related("skills")
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+        .exclude(application_url__isnull=True)
+        .exclude(application_url="")
+    )

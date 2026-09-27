@@ -67,6 +67,17 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertTrue(all("explanation" in result and "components" in result for result in results))
         self.assertNotIn(self.expired_job.pk, [result["job"]["id"] for result in results])
 
+    def test_jobs_without_application_url_are_excluded(self):
+        missing_url_job = self.create_job("Unavailable Role", "remote", [self.python])
+        missing_url_job.application_url = ""
+        missing_url_job.save(update_fields=["application_url"])
+
+        response = self.client.get("/api/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 3)
+        self.assertNotIn(missing_url_job.pk, [result["job"]["id"] for result in response.data["results"]])
+
     def test_default_limit_returns_top_twenty_ranked_jobs(self):
         for index in range(18):
             self.create_job(f"Additional Developer {index}", "remote", [self.python])
@@ -74,11 +85,20 @@ class JobRecommendationsAPITests(APITestCase):
         response = self.client.get("/api/recommendations/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 20)
+        self.assertEqual(response.data["count"], 21)
         results = response.data["results"]
+        self.assertEqual(len(results), 20)
         self.assertEqual([result["rank"] for result in results], list(range(1, 21)))
         scores = [result["score"] for result in results]
         self.assertEqual(scores, sorted(scores, reverse=True))
+
+        second_page = self.client.get("/api/recommendations/?page=2")
+
+        self.assertEqual(second_page.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_page.data["count"], 21)
+        self.assertEqual(len(second_page.data["results"]), 1)
+        self.assertEqual(second_page.data["results"][0]["rank"], 21)
+        self.assertIsNotNone(second_page.data["previous"])
 
     def test_low_scoring_jobs_are_ranked_without_match_threshold_filter(self):
         react = Skill.objects.create(name="React", slug="react")
@@ -97,7 +117,8 @@ class JobRecommendationsAPITests(APITestCase):
         response = self.client.get("/api/recommendations/?limit=2")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual(len(response.data["results"]), 2)
         self.assertEqual(
             [result["job"]["id"] for result in response.data["results"]],
             [self.strong_job.pk, self.middle_job.pk],
