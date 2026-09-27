@@ -37,6 +37,8 @@ class Job(models.Model):
     location = models.CharField(max_length=255)
     work_type = models.CharField(max_length=20, choices=WORK_TYPE_CHOICES)
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPE_CHOICES)
+    industry = models.CharField(max_length=255, blank=True, default="")
+    min_years_experience = models.PositiveIntegerField(default=0)
     application_url = models.URLField(max_length=500)
     source = models.CharField(max_length=255, blank=True)
     external_id = models.CharField(max_length=255, blank=True, null=True, unique=True)

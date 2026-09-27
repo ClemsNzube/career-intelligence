@@ -12,6 +12,8 @@ from apps.users.models import (
 
 
 class CareerProfileSerializer(serializers.ModelSerializer):
+    preferred_locations = serializers.JSONField(required=False, allow_null=True, default=list)
+
     class Meta:
         model = CareerProfile
         fields = [
@@ -27,6 +29,13 @@ class CareerProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_preferred_locations(self, value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
 
 
 class CareerPreferencesSerializer(serializers.ModelSerializer):

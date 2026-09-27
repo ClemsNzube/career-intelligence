@@ -12,6 +12,8 @@ from apps.jobs.api.schema import job_detail_schema, job_list_schema
 from apps.jobs.api.serializers import JobSerializer
 from apps.jobs.models import Job, JobSource
 from apps.jobs.services.ingestion import JobIngestionService
+from apps.matching.services.match_job_to_profile import match_job_to_profile
+from apps.users.models import CareerProfile
 
 
 @job_list_schema
@@ -85,6 +87,24 @@ class JobListCreateAPIView(ListCreateAPIView):
 class JobDetailAPIView(RetrieveUpdateDestroyAPIView):
     queryset = Job.objects.prefetch_related("skills").all()
     serializer_class = JobSerializer
+
+
+class JobMatchAPIView(APIView):
+    def get(self, request, pk, *args, **kwargs):
+        try:
+            job = Job.objects.prefetch_related("skills").get(pk=pk)
+        except Job.DoesNotExist:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not request.user or not request.user.is_authenticated:
+            return Response({"detail": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = CareerProfile.objects.filter(user=request.user).first()
+        if profile is None:
+            return Response({"detail": "No career profile found for this user."}, status=status.HTTP_404_NOT_FOUND)
+
+        result = match_job_to_profile(profile, job)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class JobIngestAPIView(APIView):

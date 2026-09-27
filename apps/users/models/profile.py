@@ -7,7 +7,7 @@ class CareerProfile(models.Model):
     related_name = models.CharField(max_length=255, blank=True)
     bio = models.TextField(blank=True)
     year_of_experience = models.PositiveIntegerField(default=0)
-    preferred_locations = models.JSONField(default=list, blank=True)
+    preferred_locations = models.JSONField(default=list, blank=True, null=True)
     preferred_work_type = models.CharField(max_length=20, blank=True, choices=[('remote', 'Remote'), ('onsite', 'Onsite'), ('hybrid', 'Hybrid')])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

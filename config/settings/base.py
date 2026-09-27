@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.jobs',
     'apps.skills',
+    'apps.matching',
 
 ]
 

@@ -20,6 +20,8 @@ class ParsedJob:
     location: str
     work_type: str
     employment_type: str
+    industry: str
+    min_years_experience: int
     application_url: str
     source: str
     skills: list[str]
@@ -38,6 +40,8 @@ class JobParser:
             location=(raw_job.get("location") or "").strip(),
             work_type=(raw_job.get("work_type") or "").strip(),
             employment_type=(raw_job.get("employment_type") or "").strip(),
+            industry=(raw_job.get("industry") or "").strip(),
+            min_years_experience=int(raw_job.get("min_years_experience") or 0),
             application_url=(raw_job.get("application_url") or "").strip(),
             source=(raw_job.get("source") or "").strip(),
             skills=[str(item).strip() for item in (raw_job.get("skills") or []) if str(item).strip()],
@@ -122,6 +126,8 @@ class JobIngestionService:
             "location": parsed.location,
             "work_type": parsed.work_type,
             "employment_type": parsed.employment_type,
+            "industry": parsed.industry,
+            "min_years_experience": parsed.min_years_experience,
             "application_url": parsed.application_url,
             "source": self.source.slug,
             "external_id": parsed.external_id,

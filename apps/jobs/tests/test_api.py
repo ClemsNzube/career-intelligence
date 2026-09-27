@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -7,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from apps.jobs.models import Job
 from apps.skills.models import Skill
+from apps.users.models import CareerProfile
 
 
 class JobAPITest(APITestCase):
@@ -45,6 +47,8 @@ class JobAPITest(APITestCase):
             "employment_type": "full_time",
             "application_url": "https://example.com/jobs/data-engineer",
             "source": "greenhouse",
+            "industry": "Technology",
+            "min_years_experience": 3,
             "skills": ["Python", "Django"],
         }
 
@@ -52,6 +56,8 @@ class JobAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["company_name"], "Acme Labs")
+        self.assertEqual(response.data["industry"], "Technology")
+        self.assertEqual(response.data["min_years_experience"], 3)
         self.assertIn("Python", response.data["skills"])
 
         invalid_response = self.client.post(
@@ -61,6 +67,29 @@ class JobAPITest(APITestCase):
         )
 
         self.assertEqual(invalid_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_match_endpoint_returns_profile_job_score(self):
+        user = get_user_model().objects.create_user(username="matcher", email="matcher@example.com", password="secret123")
+        profile = CareerProfile.objects.create(
+            user=user,
+            related_name="Python Engineer",
+            bio="Builds backend systems.",
+            year_of_experience=5,
+            preferred_locations=["Remote"],
+            preferred_work_type="remote",
+        )
+        python_skill = Skill.objects.get(name="Python")
+        django_skill = Skill.objects.get(name="Django")
+        profile.skills.set([python_skill, django_skill])
+
+        self.client.force_authenticate(user=user)
+        response = self.client.get(f"/api/jobs/{self.job.pk}/match/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("total", response.data)
+        self.assertIn("match", response.data)
+        self.assertTrue(response.data["match"])
+        self.assertIn("explanation", response.data)
 
     def test_job_detail_supports_update_and_delete(self):
         detail_url = reverse("job-detail", args=[self.job.pk])

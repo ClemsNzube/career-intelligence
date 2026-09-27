@@ -46,6 +46,8 @@ class JobSerializer(serializers.ModelSerializer):
             "location",
             "work_type",
             "employment_type",
+            "industry",
+            "min_years_experience",
             "application_url",
             "source",
             "external_id",
@@ -66,13 +68,14 @@ class JobSerializer(serializers.ModelSerializer):
             "location",
             "work_type",
             "employment_type",
+            "industry",
             "application_url",
         ]:
             value = attrs.get(field_name)
             if isinstance(value, str) and not value.strip():
                 raise serializers.ValidationError({field_name: "This field may not be blank."})
 
-        for field_name in ["title", "company_name", "location", "source", "external_id", "application_url"]:
+        for field_name in ["title", "company_name", "location", "source", "external_id", "application_url", "industry"]:
             value = attrs.get(field_name)
             if isinstance(value, str):
                 attrs[field_name] = value.strip()
