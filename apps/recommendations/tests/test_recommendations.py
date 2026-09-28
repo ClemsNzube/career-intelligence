@@ -93,12 +93,33 @@ class JobRecommendationsAPITests(APITestCase):
         results = response.data["results"]
         self.assertEqual(
             [result["job"]["id"] for result in results],
-            [self.strong_job.pk, self.middle_job.pk, self.weak_job.pk],
+            [self.middle_job.pk, self.strong_job.pk, self.weak_job.pk],
         )
         self.assertEqual([result["rank"] for result in results], [1, 2, 3])
         self.assertEqual([result["score"] for result in results], sorted((result["score"] for result in results), reverse=True))
         self.assertTrue(all("explanation" in result and "components" in result for result in results))
         self.assertNotIn(self.expired_job.pk, [result["job"]["id"] for result in results])
+
+    def test_equal_scores_are_ordered_by_posted_at_then_id_descending(self):
+        older_job = self.create_job("Python Developer", "remote", [self.python])
+        same_date_earlier_id = self.create_job("Python Developer", "remote", [self.python])
+        same_date_later_id = self.create_job("Python Developer", "remote", [self.python])
+        latest = timezone.now()
+        older = latest - timedelta(days=1)
+
+        older_job.posted_at = older
+        older_job.save(update_fields=["posted_at"])
+        same_date_earlier_id.posted_at = latest
+        same_date_earlier_id.save(update_fields=["posted_at"])
+        same_date_later_id.posted_at = latest
+        same_date_later_id.save(update_fields=["posted_at"])
+
+        response = self.client.get("/api/recommendations/?limit=50")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ranked_ids = [item["job"]["id"] for item in response.data["results"]]
+        self.assertLess(ranked_ids.index(same_date_later_id.pk), ranked_ids.index(same_date_earlier_id.pk))
+        self.assertLess(ranked_ids.index(same_date_earlier_id.pk), ranked_ids.index(older_job.pk))
 
     def test_jobs_without_application_url_are_excluded(self):
         missing_url_job = self.create_job("Unavailable Role", "remote", [self.python])
@@ -154,7 +175,7 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual(len(response.data["results"]), 2)
         self.assertEqual(
             [result["job"]["id"] for result in response.data["results"]],
-            [self.strong_job.pk, self.middle_job.pk],
+            [self.middle_job.pk, self.strong_job.pk],
         )
 
     def test_invalid_limit_is_rejected(self):

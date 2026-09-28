@@ -15,7 +15,15 @@ def recommend_jobs(profile, jobs, limit=DEFAULT_RECOMMENDATION_LIMIT):
         components = {name: result[name] for name in ("skill", "experience", "work_type", "location", "title")}
         scored_jobs.append({"job": job, "components": components, **result})
 
-    ranked_jobs = sorted(scored_jobs, key=lambda item: (-item["score"], item["job"].pk))
+    ranked_jobs = sorted(
+        scored_jobs,
+        key=lambda item: (
+            -item["score"],
+            item["job"].posted_at is None,
+            -(item["job"].posted_at.timestamp()) if item["job"].posted_at else 0,
+            -item["job"].pk,
+        ),
+    )
     if limit is not None:
         ranked_jobs = ranked_jobs[:limit]
 
