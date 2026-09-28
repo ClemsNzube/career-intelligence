@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 
 from apps.jobs.models import Job
 from apps.skills.models import Skill
-from apps.users.models import CareerProfile
+from apps.users.models import CareerPreferences, CareerProfile, Experience
 
 
 class JobRecommendationsAPITests(APITestCase):
@@ -20,7 +20,6 @@ class JobRecommendationsAPITests(APITestCase):
         )
         self.profile = CareerProfile.objects.create(
             user=self.user,
-            related_name="Python Developer",
             year_of_experience=5,
             preferred_locations=["Remote"],
             preferred_work_type="remote",
@@ -28,6 +27,24 @@ class JobRecommendationsAPITests(APITestCase):
         self.python = Skill.objects.create(name="Python", slug="python")
         self.django = Skill.objects.create(name="Django", slug="django")
         self.profile.skills.set([self.python, self.django])
+        self.experience = Experience.objects.create(
+            career_profile=self.profile,
+            job_title="Backend Engineer",
+            company="Example Corp",
+            employment_type="full_time",
+            location="Remote",
+            start_date=date(2020, 1, 1),
+            currently_working=True,
+            description="Builds Python services.",
+        )
+        self.experience.skills_used.set([self.python, self.django])
+        self.preferences = CareerPreferences.objects.create(
+            career_profile=self.profile,
+            target_job_titles=["Python Developer", "Backend Engineer"],
+            preferred_locations=["Remote"],
+            preferred_work_types=["remote"],
+            min_years_of_experience=3,
+        )
 
         self.strong_job = self.create_job("Python Backend Developer", "remote", [self.python, self.django])
         self.weak_job = self.create_job("Frontend Designer", "onsite", [])
@@ -37,6 +54,22 @@ class JobRecommendationsAPITests(APITestCase):
         self.expired_job.save(update_fields=["expires_at"])
 
         self.client.force_authenticate(user=self.user)
+
+    def test_profile_data_is_saved_and_linked(self):
+        profile = CareerProfile.objects.get(user=self.user)
+
+        self.assertEqual(set(profile.skills.all()), {self.python, self.django})
+        self.assertEqual(profile.year_of_experience, 5)
+        self.assertEqual(profile.preferred_work_type, "remote")
+        self.assertEqual(profile.preferred_locations, ["Remote"])
+        self.assertEqual(profile.work_experiences.get(), self.experience)
+        self.assertEqual(set(self.experience.skills_used.all()), {self.python, self.django})
+        self.assertEqual(profile.preferences, self.preferences)
+        self.assertEqual(
+            profile.preferences.target_job_titles,
+            ["Python Developer", "Backend Engineer"],
+        )
+        self.assertEqual(profile.preferences.career_profile, profile)
 
     def create_job(self, title, work_type, skills):
         job = Job.objects.create(
