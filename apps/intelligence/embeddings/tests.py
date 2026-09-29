@@ -4,11 +4,13 @@ from django.test import TestCase
 from apps.intelligence.embeddings.services import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
+    EmbeddingService,
     build_job_text,
     build_profile_text,
     generate_embedding,
     similarity,
 )
+from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
 from apps.jobs.models import Job
 from apps.skills.models import Skill
 from apps.users.models import CareerProfile, Experience, Project
@@ -25,6 +27,14 @@ class FixedEmbeddingProvider:
 
 
 class EmbeddingServiceTests(TestCase):
+    def test_service_uses_an_injected_provider(self):
+        provider = FixedEmbeddingProvider((0.25, 0.75))
+
+        vector = EmbeddingService(provider=provider).embed("Backend Python Engineer")
+
+        self.assertEqual(vector, [0.25, 0.75])
+        self.assertEqual(provider.received_text, "Backend Python Engineer")
+
     def test_generates_embedding_through_injected_provider(self):
         provider = FixedEmbeddingProvider((0.25, 0.75))
 
@@ -34,6 +44,20 @@ class EmbeddingServiceTests(TestCase):
         self.assertEqual(provider.received_text, "Backend Python Engineer")
         self.assertEqual(DEFAULT_EMBEDDING_MODEL, "BAAI/bge-small-en-v1.5")
         self.assertEqual(DEFAULT_EMBEDDING_DIMENSIONS, 384)
+
+    def test_fake_provider_is_deterministic_and_has_consistent_dimensions(self):
+        provider = FakeEmbeddingProvider(dimensions=16)
+
+        first_vector = provider.embed("Backend Python Engineer")
+        second_vector = provider.embed("Backend Python Engineer")
+
+        self.assertEqual(first_vector, second_vector)
+        self.assertEqual(len(first_vector), 16)
+
+    def test_default_provider_returns_a_vector_without_loading_a_model(self):
+        vector = generate_embedding("Backend Python Engineer")
+
+        self.assertEqual(len(vector), DEFAULT_EMBEDDING_DIMENSIONS)
 
     def test_rejects_blank_text(self):
         with self.assertRaises(ValueError):

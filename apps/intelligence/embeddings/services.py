@@ -1,20 +1,17 @@
 from collections.abc import Sequence
 from functools import lru_cache
 import math
-from typing import Protocol
 
 from apps.intelligence.extraction.services import extract_job_data
+from apps.intelligence.embeddings.providers.base import (
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    EmbeddingProvider,
+)
+from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
 
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-DEFAULT_EMBEDDING_DIMENSIONS = 384
-
-
-class EmbeddingProvider(Protocol):
-    def embed(self, text: str) -> Sequence[float]: ...
-
-
-class FastEmbedProvider:
+class FastEmbedProvider(EmbeddingProvider):
     """Local ONNX embedding provider, isolated behind the provider interface."""
 
     model_name = DEFAULT_EMBEDDING_MODEL
@@ -23,7 +20,7 @@ class FastEmbedProvider:
     def __init__(self):
         self._model = None
 
-    def embed(self, text: str) -> Sequence[float]:
+    def embed(self, text: str) -> list[float]:
         if self._model is None:
             from fastembed import TextEmbedding
 
@@ -36,22 +33,33 @@ class FastEmbedProvider:
 
 
 @lru_cache(maxsize=1)
-def _default_provider() -> FastEmbedProvider:
-    return FastEmbedProvider()
+def _default_provider() -> EmbeddingProvider:
+    return FakeEmbeddingProvider()
+
+
+class EmbeddingService:
+    def __init__(self, provider: EmbeddingProvider | None = None):
+        self.provider = provider if provider is not None else _default_provider()
+
+    def embed(self, text: str) -> list[float]:
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("text must contain at least one non-whitespace character.")
+
+        vector = [float(value) for value in self.provider.embed(text)]
+        if not vector:
+            raise ValueError("The embedding provider returned an empty vector.")
+
+        dimensions = getattr(self.provider, "dimensions", None)
+        if dimensions is not None and len(vector) != dimensions:
+            raise ValueError("The embedding provider returned a vector with an unexpected dimension.")
+        if not all(math.isfinite(value) for value in vector):
+            raise ValueError("The embedding provider returned a non-finite value.")
+        return vector
 
 
 def generate_embedding(text: str, provider: EmbeddingProvider | None = None) -> list[float]:
-    """Generate an embedding using the selected provider, defaulting to FastEmbed."""
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("text must contain at least one non-whitespace character.")
-
-    selected_provider = provider or _default_provider()
-    vector = [float(value) for value in selected_provider.embed(text)]
-    if not vector:
-        raise ValueError("The embedding provider returned an empty vector.")
-    if not all(math.isfinite(value) for value in vector):
-        raise ValueError("The embedding provider returned a non-finite value.")
-    return vector
+    """Generate an embedding using the selected provider."""
+    return EmbeddingService(provider=provider).embed(text)
 
 
 def similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
