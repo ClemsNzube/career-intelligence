@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from apps.intelligence.embeddings.models import Embedding
 from apps.intelligence.embeddings.services import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
@@ -130,3 +131,46 @@ class EmbeddingServiceTests(TestCase):
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, text)
+
+
+class EmbeddingPersistenceTests(TestCase):
+    def test_embedding_model_can_store_metadata_and_vector(self):
+        user = get_user_model().objects.create_user(username="vector-user")
+        profile = CareerProfile.objects.create(
+            user=user,
+            related_name="Backend Engineer",
+            bio="Builds Python services.",
+        )
+
+        saved = EmbeddingService(provider=FakeEmbeddingProvider(dimensions=DEFAULT_EMBEDDING_DIMENSIONS)).save_for_object(
+            profile,
+            "Backend Python Engineer with Django and PostgreSQL",
+            model_name="fake-provider-tests",
+        )
+
+        self.assertEqual(saved.source_text, "Backend Python Engineer with Django and PostgreSQL")
+        self.assertEqual(saved.model_name, "fake-provider-tests")
+        self.assertEqual(len(saved.embedding), DEFAULT_EMBEDDING_DIMENSIONS)
+        self.assertTrue(saved.pk)
+
+        persisted = Embedding.objects.get(content_type__app_label="users", content_type__model="careerprofile", object_id=profile.pk)
+        self.assertEqual(persisted.source_text, saved.source_text)
+        self.assertEqual(len(list(persisted.embedding)), DEFAULT_EMBEDDING_DIMENSIONS)
+        self.assertEqual(persisted.model_name, "fake-provider-tests")
+
+    def test_embedding_model_updates_existing_record(self):
+        user = get_user_model().objects.create_user(username="vector-update-user")
+        profile = CareerProfile.objects.create(
+            user=user,
+            related_name="Data Engineer",
+            bio="Works with data pipelines.",
+        )
+
+        service = EmbeddingService(provider=FakeEmbeddingProvider(dimensions=DEFAULT_EMBEDDING_DIMENSIONS))
+        first = service.save_for_object(profile, "Python data engineering", model_name="fake-provider-tests")
+        second = service.save_for_object(profile, "Updated Python data engineering", model_name="fake-provider-tests")
+
+        self.assertEqual(Embedding.objects.filter(object_id=profile.pk).count(), 1)
+        self.assertEqual(first.pk, second.pk)
+        self.assertNotEqual(first.source_text, second.source_text)
+        self.assertEqual(second.source_text, "Updated Python data engineering")

@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'apps.skills',
     'apps.matching',
     'apps.recommendations',
+    'apps.intelligence',
 
 ]
 

@@ -1,45 +1,32 @@
+import math
 from collections.abc import Sequence
 from functools import lru_cache
-import math
 
-from apps.intelligence.extraction.services import extract_job_data
+from django.contrib.contenttypes.models import ContentType
+
+from apps.intelligence.embeddings.models import Embedding
 from apps.intelligence.embeddings.providers.base import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     EmbeddingProvider,
 )
-from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
-
+from apps.intelligence.embeddings.providers.fastembed import FastEmbedProvider
+from apps.intelligence.extraction.services import extract_job_data
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-class FastEmbedProvider(EmbeddingProvider):
-    """Local ONNX embedding provider, isolated behind the provider interface."""
-
-    model_name = DEFAULT_EMBEDDING_MODEL
-    dimensions = DEFAULT_EMBEDDING_DIMENSIONS
-
-    def __init__(self):
-        self._model = None
-
-    def embed(self, text: str) -> list[float]:
-        if self._model is None:
-            from fastembed import TextEmbedding
-
-            self._model = TextEmbedding(model_name=self.model_name)
-
-        vector = next(self._model.embed([text]), None)
-        if vector is None:
-            raise RuntimeError("The embedding provider returned no vector.")
-        return [float(value) for value in vector]
 
 
 @lru_cache(maxsize=1)
 def _default_provider() -> EmbeddingProvider:
-    return FakeEmbeddingProvider()
+    return FastEmbedProvider()
 
 
 class EmbeddingService:
     def __init__(self, provider: EmbeddingProvider | None = None):
         self.provider = provider if provider is not None else _default_provider()
+
+    @property
+    def model_name(self) -> str:
+        return getattr(self.provider, "model_name", type(self.provider).__name__)
 
     def embed(self, text: str) -> list[float]:
         if not isinstance(text, str) or not text.strip():
@@ -55,6 +42,29 @@ class EmbeddingService:
         if not all(math.isfinite(value) for value in vector):
             raise ValueError("The embedding provider returned a non-finite value.")
         return vector
+
+    def save_for_object(self, obj, text: str, *, model_name: str | None = None) -> Embedding:
+        vector = self.embed(text)
+        provider_dimensions = getattr(self.provider, "dimensions", None)
+        if provider_dimensions is not None and provider_dimensions != DEFAULT_EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                "Embedding provider dimensions do not match the persisted model dimension "
+                f"({DEFAULT_EMBEDDING_DIMENSIONS})."
+            )
+
+        content_type = ContentType.objects.get_for_model(obj)
+        resolved_model_name = model_name or self.model_name
+
+        embedding, _ = Embedding.objects.update_or_create(
+            content_type=content_type,
+            object_id=obj.pk,
+            defaults={
+                "source_text": text.strip(),
+                "embedding": vector,
+                "model_name": resolved_model_name,
+            },
+        )
+        return embedding
 
 
 def generate_embedding(text: str, provider: EmbeddingProvider | None = None) -> list[float]:
