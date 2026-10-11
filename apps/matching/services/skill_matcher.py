@@ -16,7 +16,7 @@ class SkillMatcher:
         job = {_normalize_skill(skill) for skill in (job_skills or []) if _normalize_skill(skill)}
 
         if not job:
-            return 1.0
+            return 0.0
         if not candidate:
             return 0.0
 

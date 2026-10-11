@@ -166,8 +166,16 @@ def explain_match(profile: Any, job: Any, hybrid_result: dict[str, Any]) -> dict
             gaps.append("The job location does not match your preference")
 
     preferred_title = _get_value(
-        profile, "title", "job_title", "desired_title", "target_title"
+        profile,
+        "title",
+        "job_title",
+        "desired_title",
+        "target_title",
+        "related_name",
     )
+    if not preferred_title:
+        preferences = _get_value(profile, "preferences")
+        preferred_title = _get_value(preferences, "target_job_titles", default=[])
     job_title = _get_value(job, "title", "job_title")
     title_score = _component_score(rule_details, "title")
     if preferred_title and job_title and title_score is not None:

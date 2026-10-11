@@ -1,4 +1,8 @@
+from io import StringIO
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 
 from apps.intelligence.embeddings.models import Embedding
@@ -12,6 +16,7 @@ from apps.intelligence.embeddings.services import (
     similarity,
 )
 from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
+from apps.intelligence.similarity.services import similarity_for_objects
 from apps.jobs.models import Job
 from apps.skills.models import Skill
 from apps.users.models import CareerProfile, Experience, Project
@@ -174,3 +179,44 @@ class EmbeddingPersistenceTests(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertNotEqual(first.source_text, second.source_text)
         self.assertEqual(second.source_text, "Updated Python data engineering")
+
+    def test_backfill_command_makes_saved_profile_and_job_embeddings_findable(self):
+        user = get_user_model().objects.create_user(username="backfill-user")
+        profile = CareerProfile.objects.create(
+            user=user,
+            related_name="Backend Engineer",
+            bio="Builds Python services.",
+        )
+        CareerProfile.objects.create(
+            user=get_user_model().objects.create_user(
+                username="empty-backfill-user",
+                email="empty-backfill@example.com",
+            )
+        )
+        job = Job.objects.create(
+            title="Python Backend Developer",
+            company_name="Example Corp",
+            description="Builds Python APIs.",
+            location="Remote",
+            work_type="remote",
+            employment_type="full_time",
+            application_url="https://example.com/jobs/backfill",
+        )
+        service = EmbeddingService(provider=FakeEmbeddingProvider())
+        errors = StringIO()
+
+        with patch(
+            "apps.intelligence.management.commands.backfill_embeddings.EmbeddingService",
+            return_value=service,
+        ):
+            call_command("backfill_embeddings", stderr=errors, verbosity=0)
+            call_command("backfill_embeddings", stderr=errors, verbosity=0)
+
+        self.assertEqual(
+            Embedding.objects.filter(object_id__in=[profile.pk, job.pk]).count(),
+            2,
+        )
+        self.assertIn("no text available for embedding", errors.getvalue())
+        score = similarity_for_objects(profile, job)
+        self.assertGreaterEqual(score, -1.0)
+        self.assertLessEqual(score, 1.0)

@@ -21,12 +21,10 @@ class LocationMatcher:
         candidate_values = self._normalize(candidate_location)
         job = (job_location or "").strip().lower()
 
-        if not job:
-            return 1.0
+        if not job or not candidate_values:
+            return 0.0
         if "remote" in job:
             return 1.0
-        if not candidate_values:
-            return 0.0
 
         for candidate in candidate_values:
             if candidate == job:

@@ -6,6 +6,12 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
+from apps.intelligence.embeddings.services import (
+    EmbeddingService,
+    build_job_text,
+    build_profile_text,
+)
 from apps.jobs.models import Job
 from apps.skills.models import Skill
 from apps.users.models import CareerPreferences, CareerProfile, Experience
@@ -94,7 +100,7 @@ class JobRecommendationsAPITests(APITestCase):
         results = response.data["results"]
         self.assertEqual(
             [result["job"]["id"] for result in results],
-            [self.middle_job.pk, self.strong_job.pk, self.weak_job.pk],
+            [self.strong_job.pk, self.middle_job.pk, self.weak_job.pk],
         )
         self.assertEqual([result["rank"] for result in results], [1, 2, 3])
         self.assertEqual([result["score"] for result in results], sorted((result["score"] for result in results), reverse=True))
@@ -158,6 +164,25 @@ class JobRecommendationsAPITests(APITestCase):
             "Semantic similarity unavailable; ranking uses the rule-based score only",
             result["explanation"]["gaps"],
         )
+
+    def test_recommendation_uses_persisted_embeddings_for_the_same_objects(self):
+        embedding_service = EmbeddingService(provider=FakeEmbeddingProvider())
+        embedding_service.save_for_object(self.profile, build_profile_text(self.profile))
+        embedding_service.save_for_object(
+            self.strong_job,
+            build_job_text(self.strong_job),
+        )
+
+        with patch(
+            "apps.recommendations.services.recommend_jobs.get_available_jobs",
+            return_value=[self.strong_job],
+        ):
+            response = self.client.get("/api/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result = response.data["results"][0]
+        self.assertTrue(result["scores"]["semantic_available"])
+        self.assertIsInstance(result["scores"]["semantic"], float)
 
     def test_empty_job_list_returns_empty_paginated_results(self):
         with patch(
@@ -245,7 +270,7 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual(len(response.data["results"]), 2)
         self.assertEqual(
             [result["job"]["id"] for result in response.data["results"]],
-            [self.middle_job.pk, self.strong_job.pk],
+            [self.strong_job.pk, self.middle_job.pk],
         )
 
     def test_invalid_limit_is_rejected(self):

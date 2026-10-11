@@ -16,10 +16,8 @@ class TitleMatcher:
         candidate_tokens = self._normalize(candidate_title)
         job_tokens = self._normalize(job_title)
 
-        if not job_tokens:
-            return 1.0
-        if not candidate_tokens:
-            return 1.0
+        if not job_tokens or not candidate_tokens:
+            return 0.0
 
         overlap = candidate_tokens & job_tokens
         if not overlap:

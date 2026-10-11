@@ -9,9 +9,7 @@ class WorkTypeMatcher:
         candidate = (candidate_work_type or "").strip().lower()
         job = (job_work_type or "").strip().lower()
 
-        if not job:
-            return 1.0
-        if not candidate:
+        if not job or not candidate:
             return 0.0
         if candidate == job:
             return 1.0

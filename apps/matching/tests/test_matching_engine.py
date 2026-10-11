@@ -74,7 +74,7 @@ class JobProfileMatchingEngineTests(SimpleTestCase):
         self.assertIn("weighted_score", result)
         self.assertTrue(result["match"])
 
-    def test_matching_engine_handles_zero_skill_overlap_and_no_title_preference(self):
+    def test_matching_engine_does_not_credit_an_unspecified_title_preference(self):
         profile = {
             "title": "",
             "location": "Remote",
@@ -92,9 +92,45 @@ class JobProfileMatchingEngineTests(SimpleTestCase):
 
         result = match_job_to_profile(profile, job)
 
-        self.assertEqual(result["title"], 1.0)
+        self.assertEqual(result["title"], 0.0)
         self.assertEqual(result["explanation"]["components"][4]["reason"], "No preferred job title was specified.")
         self.assertIn("none", result["explanation"]["components"][0]["reason"])
+
+    def test_missing_requirements_and_preferences_receive_no_match_credit(self):
+        result = match_job_to_profile(
+            {
+                "skills": ["Python"],
+                "years_of_experience": 5,
+                "work_type": "",
+                "location": [],
+                "title": "",
+            },
+            {
+                "title": "",
+                "skills": [],
+                "min_years_experience": 0,
+                "work_type": "",
+                "location": "",
+            },
+        )
+
+        self.assertEqual(result["skill"], 0.0)
+        self.assertEqual(result["experience"], 0.0)
+        self.assertEqual(result["work_type"], 0.0)
+        self.assertEqual(result["location"], 0.0)
+        self.assertEqual(result["title"], 0.0)
+        self.assertEqual(result["score"], 0.0)
+
+    def test_profile_target_job_titles_are_used_for_title_matching(self):
+        result = match_job_to_profile(
+            {
+                "skills": [],
+                "preferences": {"target_job_titles": ["Backend Engineer"]},
+            },
+            {"title": "Backend Engineer", "skills": ["Python"]},
+        )
+
+        self.assertEqual(result["title"], 1.0)
 
     def test_matching_engine_does_not_penalize_remote_jobs_when_remote_is_preferred(self):
         profile = {

@@ -96,7 +96,24 @@ class JobProfileMatcher:
         }
 
     def score(self, profile: Any, job: Any) -> dict[str, Any]:
-        profile_title = self._get_value(profile, "title", "job_title", "desired_title", "target_title", default="")
+        profile_title = self._get_value(
+            profile,
+            "title",
+            "job_title",
+            "desired_title",
+            "target_title",
+            "related_name",
+            default="",
+        )
+        if not profile_title:
+            preferences = self._get_value(profile, "preferences")
+            target_titles = self._get_value(preferences, "target_job_titles", default=[])
+            if target_titles:
+                job_title = self._get_value(job, "title", "job_title", default="")
+                profile_title = max(
+                    target_titles,
+                    key=lambda title: self.title_matcher.score(title, job_title),
+                )
         job_title = self._get_value(job, "title", "job_title", default="")
 
         profile_location = self._get_value(profile, "location", "preferred_location", "preferred_locations", default="")
@@ -139,9 +156,11 @@ class JobProfileMatcher:
             else:
                 skill_reason = f"Matched 0 of {len(job_skills)} required skills: none."
         else:
-            skill_reason = "No required skills were specified for this job."
+            skill_reason = "No required skills were specified for this job; no skill-match credit was awarded."
         experience_reason = (
-            f"Candidate has {profile_years} years of experience; the role requires {job_required_years}." if job_required_years else "No minimum experience requirement was specified for this role."
+            f"Candidate has {profile_years} years of experience; the role requires {job_required_years}."
+            if job_required_years
+            else "No minimum experience requirement was specified for this role; no experience-match credit was awarded."
         )
         work_type_reason = (
             f"Candidate prefers {profile_work_type or 'unspecified'} work type; the role is {job_work_type or 'unspecified'}."
