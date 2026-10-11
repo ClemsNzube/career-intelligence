@@ -1,4 +1,5 @@
-from apps.matching.services.match_job_to_profile import match_job_to_profile
+from apps.intelligence.explanations.services import explain_match
+from apps.intelligence.matching.hybrid import hybrid_match
 from apps.recommendations.selectors.recommendation_selectors import get_available_jobs, get_profile_for_user
 
 
@@ -11,9 +12,24 @@ def recommend_jobs(profile, jobs, limit=DEFAULT_RECOMMENDATION_LIMIT):
 
     scored_jobs = []
     for job in jobs:
-        result = match_job_to_profile(profile, job)
-        components = {name: result[name] for name in ("skill", "experience", "work_type", "location", "title")}
-        scored_jobs.append({"job": job, "components": components, **result})
+        hybrid_result = hybrid_match(profile, job)
+        explanation = explain_match(profile, job, hybrid_result)
+        components = hybrid_result["rule_details"]
+        scored_jobs.append(
+            {
+                "job": job,
+                "score": hybrid_result["final_score"],
+                "match": hybrid_result["final_score"] >= 0.5,
+                "components": components,
+                "scores": {
+                    "rule": hybrid_result["rule_score"],
+                    "semantic": hybrid_result["semantic_score"],
+                    "final": hybrid_result["final_score"],
+                    "semantic_available": hybrid_result["semantic_available"],
+                },
+                "explanation": explanation,
+            }
+        )
 
     ranked_jobs = sorted(
         scored_jobs,

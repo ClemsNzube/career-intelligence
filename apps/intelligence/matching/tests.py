@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
+from apps.intelligence.similarity.services import MissingEmbeddingError
 from apps.intelligence.matching.hybrid import hybrid_match
 
 
@@ -46,6 +47,33 @@ class HybridMatchingTests(SimpleTestCase):
         self.assertEqual(result["semantic_score"], 0.0)
         self.assertGreaterEqual(result["final_score"], 0.0)
         self.assertLessEqual(result["final_score"], 1.0)
+
+    def test_missing_embedding_falls_back_to_rule_score(self):
+        with patch(
+            "apps.intelligence.matching.hybrid.match_job_to_profile",
+            return_value={"score": 0.7, "skill": 0.5},
+        ), patch(
+            "apps.intelligence.matching.hybrid.similarity_for_objects",
+            side_effect=MissingEmbeddingError("No embedding exists for the job object."),
+        ):
+            result = hybrid_match(profile=object(), job=object())
+
+        self.assertEqual(result["rule_score"], 0.7)
+        self.assertIsNone(result["semantic_score"])
+        self.assertEqual(result["final_score"], 0.7)
+        self.assertFalse(result["semantic_available"])
+        self.assertEqual(result["weights"], {"rule": 1.0, "semantic": 0.0})
+
+    def test_invalid_embedding_error_is_not_treated_as_missing(self):
+        with patch(
+            "apps.intelligence.matching.hybrid.match_job_to_profile",
+            return_value={"score": 0.7},
+        ), patch(
+            "apps.intelligence.matching.hybrid.similarity_for_objects",
+            side_effect=ValueError("Embedding vectors must not be empty."),
+        ):
+            with self.assertRaisesRegex(ValueError, "must not be empty"):
+                hybrid_match(profile=object(), job=object())
 
     def test_result_includes_the_blend_weights_and_component_scores(self):
         result = self.score_with(rule_score=0.82, semantic_score=0.94)

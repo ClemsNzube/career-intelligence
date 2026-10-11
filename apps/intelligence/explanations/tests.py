@@ -129,3 +129,20 @@ class MatchExplanationTests(SimpleTestCase):
                 self.job,
                 self.make_result(final_score=1.2, rule_score=0.5, semantic_score=0.5),
             )
+
+    def test_unavailable_semantic_score_is_explained_without_penalty(self):
+        hybrid_result = {
+            "rule_score": 0.7,
+            "semantic_score": None,
+            "semantic_available": False,
+            "final_score": 0.7,
+            "rule_details": self.rule_details,
+        }
+
+        explanation = explain_match(self.profile, self.job, hybrid_result)
+
+        self.assertEqual(explanation["score_band"], "Good match")
+        self.assertIn(
+            "Semantic similarity unavailable; ranking uses the rule-based score only",
+            explanation["gaps"],
+        )

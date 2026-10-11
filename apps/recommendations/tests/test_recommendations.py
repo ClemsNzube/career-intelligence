@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -99,6 +100,75 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual([result["score"] for result in results], sorted((result["score"] for result in results), reverse=True))
         self.assertTrue(all("explanation" in result and "components" in result for result in results))
         self.assertNotIn(self.expired_job.pk, [result["job"]["id"] for result in results])
+
+    def test_hybrid_scores_rank_jobs_and_explanations_match_each_job(self):
+        rule_scores = {
+            self.strong_job.pk: 0.8,
+            self.middle_job.pk: 0.6,
+            self.weak_job.pk: 0.1,
+        }
+
+        def rule_result(profile, job):
+            return {
+                "score": rule_scores[job.pk],
+                "skill": 0.5,
+                "experience": 0.5,
+                "work_type": 0.5,
+                "location": 0.5,
+                "title": 0.5,
+            }
+
+        def semantic_score(profile, job):
+            return 1.0 if job.pk == self.middle_job.pk else 0.0
+
+        with patch(
+            "apps.intelligence.matching.hybrid.match_job_to_profile",
+            side_effect=rule_result,
+        ), patch(
+            "apps.intelligence.matching.hybrid.similarity_for_objects",
+            side_effect=semantic_score,
+        ):
+            response = self.client.get("/api/recommendations/?limit=50")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data["results"]
+        middle_result = next(item for item in results if item["job"]["id"] == self.middle_job.pk)
+        self.assertEqual(results[0]["job"]["id"], self.middle_job.pk)
+        self.assertEqual(middle_result["scores"]["semantic"], 1.0)
+        self.assertGreater(middle_result["scores"]["final"], middle_result["scores"]["rule"])
+        self.assertEqual(middle_result["score"], middle_result["scores"]["final"])
+        self.assertEqual(middle_result["explanation"]["missing_skills"], [])
+        self.assertEqual(middle_result["explanation"]["matched_skills"], ["Python"])
+        self.assertEqual(
+            [item["scores"]["final"] for item in results],
+            sorted((item["scores"]["final"] for item in results), reverse=True),
+        )
+        self.assertTrue(middle_result["scores"]["semantic_available"])
+
+    def test_missing_embeddings_use_rule_score_and_are_reported(self):
+        response = self.client.get("/api/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result = response.data["results"][0]
+        self.assertIsNone(result["scores"]["semantic"])
+        self.assertFalse(result["scores"]["semantic_available"])
+        self.assertEqual(result["scores"]["final"], result["scores"]["rule"])
+        self.assertEqual(result["score"], result["scores"]["rule"])
+        self.assertIn(
+            "Semantic similarity unavailable; ranking uses the rule-based score only",
+            result["explanation"]["gaps"],
+        )
+
+    def test_empty_job_list_returns_empty_paginated_results(self):
+        with patch(
+            "apps.recommendations.services.recommend_jobs.get_available_jobs",
+            return_value=[],
+        ):
+            response = self.client.get("/api/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
 
     def test_equal_scores_are_ordered_by_posted_at_then_id_descending(self):
         older_job = self.create_job("Python Developer", "remote", [self.python])

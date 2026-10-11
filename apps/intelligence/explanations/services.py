@@ -89,13 +89,20 @@ def explain_match(profile: Any, job: Any, hybrid_result: dict[str, Any]) -> dict
         raise ValueError("final_score must be between 0 and 1.")
 
     rule_score = float(hybrid_result["rule_score"])
-    semantic_score = float(hybrid_result["semantic_score"])
+    semantic_available = hybrid_result.get(
+        "semantic_available", hybrid_result.get("semantic_score") is not None
+    )
+    semantic_score = (
+        float(hybrid_result["semantic_score"]) if semantic_available else None
+    )
     rule_details = hybrid_result.get("rule_details", {})
     band, recommendation = _score_band(final_score)
     strengths: list[str] = []
     gaps: list[str] = []
 
-    if semantic_score >= 0.8:
+    if semantic_score is None:
+        gaps.append("Semantic similarity unavailable; ranking uses the rule-based score only")
+    elif semantic_score >= 0.8:
         strengths.append("Strong semantic similarity")
     elif semantic_score >= 0.6:
         strengths.append("Good semantic similarity")

@@ -7,6 +7,10 @@ from apps.intelligence.embeddings.models import Embedding
 from apps.intelligence.embeddings.services import similarity as cosine_similarity
 
 
+class MissingEmbeddingError(ValueError):
+    """Raised when an object has no saved embedding for semantic matching."""
+
+
 def calculate_similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
     """Return cosine similarity for two real-valued vectors."""
     if vector_a is None or vector_b is None:
@@ -42,10 +46,10 @@ def similarity_for_objects(profile_obj, job_obj) -> float:
     """Return the semantic similarity between the latest saved embeddings for two objects."""
     profile_embedding = _get_latest_embedding(profile_obj)
     if profile_embedding is None:
-        raise ValueError("No embedding exists for the profile object.")
+        raise MissingEmbeddingError("No embedding exists for the profile object.")
 
     job_embedding = _get_latest_embedding(job_obj)
     if job_embedding is None:
-        raise ValueError("No embedding exists for the job object.")
+        raise MissingEmbeddingError("No embedding exists for the job object.")
 
     return calculate_similarity(profile_embedding.embedding, job_embedding.embedding)

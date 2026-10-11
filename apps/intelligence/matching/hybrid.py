@@ -1,7 +1,7 @@
 import math
 from typing import Any
 
-from apps.intelligence.similarity.services import similarity_for_objects
+from apps.intelligence.similarity.services import MissingEmbeddingError, similarity_for_objects
 from apps.matching.services.match_job_to_profile import match_job_to_profile
 
 RULE_WEIGHT = 0.6
@@ -20,26 +20,33 @@ def _validate_score(score: float, name: str, minimum: float, maximum: float) -> 
 
 
 def hybrid_match(profile: Any, job: Any) -> dict[str, Any]:
-    """Combine the existing rule score and cosine similarity into a 0-to-1 score."""
+    """Blend rule and semantic scores, falling back to rules if embeddings are absent."""
     rule_result = match_job_to_profile(profile, job)
     rule_score = _validate_score(rule_result["score"], "Rule score", 0.0, 1.0)
-    cosine_score = _validate_score(
-        similarity_for_objects(profile, job), "Semantic score", -1.0, 1.0
-    )
-    semantic_score = max(0.0, cosine_score)
+    try:
+        cosine_score = _validate_score(
+            similarity_for_objects(profile, job), "Semantic score", -1.0, 1.0
+        )
+    except MissingEmbeddingError:
+        semantic_score = None
+        final_score = rule_score
+        weights = {"rule": 1.0, "semantic": 0.0}
+        semantic_available = False
+    else:
+        semantic_score = max(0.0, cosine_score)
+        final_score = (rule_score * RULE_WEIGHT) + (semantic_score * SEMANTIC_WEIGHT)
+        weights = {"rule": RULE_WEIGHT, "semantic": SEMANTIC_WEIGHT}
+        semantic_available = True
 
-    final_score = (rule_score * RULE_WEIGHT) + (semantic_score * SEMANTIC_WEIGHT)
     return {
         "rule_score": rule_score,
         "semantic_score": semantic_score,
+        "semantic_available": semantic_available,
         "final_score": final_score,
         "rule_details": {
             name: rule_result[name]
             for name in ("skill", "experience", "work_type", "location", "title")
             if name in rule_result
         },
-        "weights": {
-            "rule": RULE_WEIGHT,
-            "semantic": SEMANTIC_WEIGHT,
-        },
+        "weights": weights,
     }
