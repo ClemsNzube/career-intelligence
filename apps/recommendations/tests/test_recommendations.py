@@ -107,6 +107,50 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertTrue(all("explanation" in result and "components" in result for result in results))
         self.assertNotIn(self.expired_job.pk, [result["job"]["id"] for result in results])
 
+    def test_experience_skills_and_career_preferences_drive_recommendations(self):
+        self.profile.skills.clear()
+        self.experience.skills_used.set([self.python, self.django])
+        self.profile.related_name = "Unrelated Title"
+        self.profile.preferred_locations = ["New York"]
+        self.profile.preferred_work_type = "onsite"
+        self.profile.save(
+            update_fields=["related_name", "preferred_locations", "preferred_work_type"]
+        )
+        self.preferences.target_job_titles = ["Python Backend Developer"]
+        self.preferences.preferred_locations = ["Remote"]
+        self.preferences.preferred_work_types = ["remote", "hybrid"]
+        self.preferences.save(
+            update_fields=[
+                "target_job_titles",
+                "preferred_locations",
+                "preferred_work_types",
+            ]
+        )
+
+        response = self.client.get("/api/recommendations/?limit=50")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result = next(
+            item
+            for item in response.data["results"]
+            if item["job"]["id"] == self.strong_job.pk
+        )
+        self.assertEqual(result["components"]["skill"], 1.0)
+        self.assertEqual(result["components"]["location"], 1.0)
+        self.assertEqual(result["components"]["work_type"], 1.0)
+        self.assertEqual(result["components"]["title"], 1.0)
+        self.assertEqual(result["explanation"]["matched_skills"], ["Python", "Django"])
+        self.assertEqual(result["explanation"]["missing_skills"], [])
+        self.assertIn("Your location preference matches", result["explanation"]["strengths"])
+        self.assertIn("Your work type preference matches", result["explanation"]["strengths"])
+        self.assertIn("Your preferred title aligns with this role", result["explanation"]["strengths"])
+
+    def test_browsable_api_renders_recommendations(self):
+        response = self.client.get("/api/recommendations/", HTTP_ACCEPT="text/html")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertContains(response, "Python Backend Developer")
+
     def test_hybrid_scores_rank_jobs_and_explanations_match_each_job(self):
         rule_scores = {
             self.strong_job.pk: 0.8,

@@ -1,6 +1,11 @@
 import math
 from typing import Any
 
+from apps.intelligence.normalization.profile_data import (
+    get_profile_matching_preferences,
+    get_profile_skills,
+)
+
 
 SCORE_BANDS = (
     (0.80, "Strong match", "Apply"),
@@ -43,10 +48,7 @@ def _normalize_skill(skill: str) -> str:
 
 
 def _skill_lists(profile: Any, job: Any) -> tuple[list[str], list[str]]:
-    profile_skills = [
-        _skill_label(skill)
-        for skill in _as_items(_get_value(profile, "skills", "skill_names", "preferred_skills"))
-    ]
+    profile_skills = get_profile_skills(profile)
     job_skills = [
         _skill_label(skill)
         for skill in _as_items(_get_value(job, "skills"))
@@ -145,7 +147,8 @@ def explain_match(profile: Any, job: Any, hybrid_result: dict[str, Any]) -> dict
                 f"the role requires {required_years:g}"
             )
 
-    preferred_work_type = _get_value(profile, "work_type", "preferred_work_type")
+    profile_preferences = get_profile_matching_preferences(profile)
+    preferred_work_type = profile_preferences["preferred_work_types"]
     job_work_type = _get_value(job, "work_type")
     work_type_score = _component_score(rule_details, "work_type")
     if preferred_work_type and job_work_type and work_type_score is not None:
@@ -154,9 +157,7 @@ def explain_match(profile: Any, job: Any, hybrid_result: dict[str, Any]) -> dict
         else:
             gaps.append("The job's work type differs from your preference")
 
-    preferred_location = _get_value(
-        profile, "location", "preferred_location", "preferred_locations"
-    )
+    preferred_location = profile_preferences["preferred_locations"]
     job_location = _get_value(job, "location")
     location_score = _component_score(rule_details, "location")
     if _as_items(preferred_location) and job_location and location_score is not None:
@@ -165,17 +166,7 @@ def explain_match(profile: Any, job: Any, hybrid_result: dict[str, Any]) -> dict
         else:
             gaps.append("The job location does not match your preference")
 
-    preferred_title = _get_value(
-        profile,
-        "title",
-        "job_title",
-        "desired_title",
-        "target_title",
-        "related_name",
-    )
-    if not preferred_title:
-        preferences = _get_value(profile, "preferences")
-        preferred_title = _get_value(preferences, "target_job_titles", default=[])
+    preferred_title = profile_preferences["target_job_titles"]
     job_title = _get_value(job, "title", "job_title")
     title_score = _component_score(rule_details, "title")
     if preferred_title and job_title and title_score is not None:

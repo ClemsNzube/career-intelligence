@@ -6,7 +6,9 @@ from apps.users.models import CareerProfile
 
 
 def get_profile_for_user(user):
-    return CareerProfile.objects.prefetch_related("skills").filter(user=user).first()
+    return CareerProfile.objects.prefetch_related(
+        "skills", "work_experiences__skills_used"
+    ).filter(user=user).first()
 
 
 def get_available_jobs():

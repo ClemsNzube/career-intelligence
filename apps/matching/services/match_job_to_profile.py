@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.intelligence.normalization.profile_data import (
+    get_profile_matching_preferences,
+    get_profile_skills,
+)
+
 from .experience_matcher import ExperienceMatcher
 from .location_matcher import LocationMatcher
 from .skill_matcher import SkillMatcher
@@ -72,14 +77,6 @@ class JobProfileMatcher:
             return [str(skill.name if hasattr(skill, "name") else skill) for skill in skills]
         return [str(skills)] if skills else []
 
-    def _profile_skills(self, profile: Any) -> list[str]:
-        skills = self._get_value(profile, "skills", "skill_names", "preferred_skills", default=[])
-        if hasattr(skills, "all"):
-            return [str(skill.name if hasattr(skill, "name") else skill) for skill in skills.all()]
-        if isinstance(skills, (list, tuple, set)):
-            return [str(skill.name if hasattr(skill, "name") else skill) for skill in skills]
-        return [str(skills)] if skills else []
-
     def _coerce_float(self, value: Any, default: float = 0.0) -> float:
         try:
             return float(value)
@@ -96,40 +93,28 @@ class JobProfileMatcher:
         }
 
     def score(self, profile: Any, job: Any) -> dict[str, Any]:
-        profile_title = self._get_value(
-            profile,
-            "title",
-            "job_title",
-            "desired_title",
-            "target_title",
-            "related_name",
-            default="",
-        )
-        if not profile_title:
-            preferences = self._get_value(profile, "preferences")
-            target_titles = self._get_value(preferences, "target_job_titles", default=[])
-            if target_titles:
-                job_title = self._get_value(job, "title", "job_title", default="")
-                profile_title = max(
-                    target_titles,
-                    key=lambda title: self.title_matcher.score(title, job_title),
-                )
+        profile_preferences = get_profile_matching_preferences(profile)
         job_title = self._get_value(job, "title", "job_title", default="")
+        profile_titles = profile_preferences["target_job_titles"]
+        profile_title = (
+            max(
+                profile_titles,
+                key=lambda title: self.title_matcher.score(title, job_title),
+            )
+            if profile_titles
+            else ""
+        )
 
-        profile_location = self._get_value(profile, "location", "preferred_location", "preferred_locations", default="")
-        if isinstance(profile_location, (list, tuple, set)):
-            profile_location = next((item for item in profile_location if item), "")
+        profile_location = profile_preferences["preferred_locations"]
         job_location = self._get_value(job, "location", default="")
 
-        profile_work_type = self._get_value(profile, "work_type", "preferred_work_type", default="")
-        if isinstance(profile_work_type, (list, tuple, set)):
-            profile_work_type = next((item for item in profile_work_type if item), "")
+        profile_work_type = profile_preferences["preferred_work_types"]
         job_work_type = self._get_value(job, "work_type", default="")
 
         profile_years = self._get_value(profile, "years_of_experience", "year_of_experience", "experience_years", default=0)
         job_required_years = self._get_value(job, "min_years_experience", "minimum_years_experience", default=0)
 
-        candidate_skills = self._profile_skills(profile)
+        candidate_skills = get_profile_skills(profile)
         job_skills = self._job_skills(job)
 
         skill_score = self.skill_matcher.score(candidate_skills, job_skills)

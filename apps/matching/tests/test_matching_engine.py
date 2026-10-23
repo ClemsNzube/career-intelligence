@@ -132,6 +132,33 @@ class JobProfileMatchingEngineTests(SimpleTestCase):
 
         self.assertEqual(result["title"], 1.0)
 
+    def test_experience_skills_and_saved_preferences_drive_matching(self):
+        result = match_job_to_profile(
+            {
+                "related_name": "Unrelated Title",
+                "preferred_locations": ["New York"],
+                "preferred_work_type": "onsite",
+                "skills": [],
+                "work_experiences": [{"skills_used": ["Python"]}],
+                "preferences": {
+                    "target_job_titles": ["Backend Engineer"],
+                    "preferred_locations": ["Remote"],
+                    "preferred_work_types": ["remote", "hybrid"],
+                },
+            },
+            {
+                "title": "Backend Engineer",
+                "location": "Remote",
+                "work_type": "remote",
+                "skills": ["Python"],
+            },
+        )
+
+        self.assertEqual(result["skill"], 1.0)
+        self.assertEqual(result["location"], 1.0)
+        self.assertEqual(result["work_type"], 1.0)
+        self.assertEqual(result["title"], 1.0)
+
     def test_matching_engine_does_not_penalize_remote_jobs_when_remote_is_preferred(self):
         profile = {
             "title": "Python Engineer",

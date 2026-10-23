@@ -4,6 +4,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.jobs.models import Job
 from apps.recommendations.api.serializers import RecommendationSerializer
 from apps.recommendations.services.recommend_jobs import DEFAULT_RECOMMENDATION_LIMIT, get_recommended_jobs
 
@@ -18,6 +19,8 @@ class JobRecommendationsAPIView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     pagination_class = RecommendationPagination
     serializer_class = RecommendationSerializer
+    # Recommendations are computed dynamically; DRF's browsable API still expects a queryset.
+    queryset = Job.objects.none()
 
     def get(self, request, *args, **kwargs):
         raw_limit = request.query_params.get("limit")
