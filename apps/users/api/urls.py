@@ -6,6 +6,7 @@ from .views import (
     CareerPreferencesListCreateAPIView,
     CareerProfileDetailAPIView,
     CareerProfileListCreateAPIView,
+    CareerProfileSkillSuggestionsAPIView,
     CertificationDetailAPIView,
     CertificationListCreateAPIView,
     EducationDetailAPIView,
@@ -19,6 +20,7 @@ from .views import (
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('profiles/', CareerProfileListCreateAPIView.as_view(), name='profile-list'),
+    path('profiles/<int:pk>/skill-suggestions/', CareerProfileSkillSuggestionsAPIView.as_view(), name='profile-skill-suggestions'),
     path('profiles/<int:pk>/', CareerProfileDetailAPIView.as_view(), name='profile-detail'),
     path('preferences/', CareerPreferencesListCreateAPIView.as_view(), name='career-preferences-list'),
     path('preferences/<int:pk>/', CareerPreferencesDetailAPIView.as_view(), name='career-preferences-detail'),
@@ -31,4 +33,3 @@ urlpatterns = [
     path('projects/', ProjectListCreateAPIView.as_view(), name='project-list'),
     path('projects/<int:pk>/', ProjectDetailAPIView.as_view(), name='project-detail'),
 ]
-

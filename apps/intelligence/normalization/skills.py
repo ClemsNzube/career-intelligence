@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from apps.skills.models import Skill
 
 
-_SKILL_ALIASES = {
+SKILL_ALIASES = {
     "drf": "Django REST Framework",
     "django rest": "Django REST Framework",
     "django rest framework": "Django REST Framework",
@@ -45,7 +45,7 @@ def normalize_skills(skill_names: Iterable[str] | None) -> list[str]:
             continue
 
         lookup_key = _lookup_key(cleaned_name)
-        canonical_name = skills_by_key.get(_lookup_key(_SKILL_ALIASES.get(lookup_key, cleaned_name)))
+        canonical_name = skills_by_key.get(_lookup_key(SKILL_ALIASES.get(lookup_key, cleaned_name)))
         resolved_name = canonical_name or cleaned_name
         resolved_key = _lookup_key(resolved_name)
         if resolved_key not in seen:

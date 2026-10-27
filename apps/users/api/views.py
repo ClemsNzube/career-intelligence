@@ -1,5 +1,9 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from apps.intelligence.normalization.profile_skills import classify_profile_skills
 from apps.users.api.serializers import (
     CareerPreferencesSerializer,
     CareerProfileSerializer,
@@ -26,6 +30,28 @@ class CareerProfileListCreateAPIView(generics.ListCreateAPIView):
 class CareerProfileDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = CareerProfile.objects.all()
     serializer_class = CareerProfileSerializer
+
+
+class CareerProfileSkillSuggestionsAPIView(APIView):
+    def get(self, request, pk, *args, **kwargs):
+        profile = get_object_or_404(
+            CareerProfile.objects.prefetch_related(
+                "skills",
+                "work_experiences__skills_used",
+                "projects__skills_used",
+            ),
+            pk=pk,
+        )
+        _, suggestions = classify_profile_skills(profile)
+        return Response(
+            {
+                "profile": profile.pk,
+                "suggestions": [
+                    {"id": skill.pk, "name": skill.name, "reason": reason}
+                    for skill, reason in suggestions
+                ],
+            }
+        )
 
 
 class CareerPreferencesListCreateAPIView(generics.ListCreateAPIView):

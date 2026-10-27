@@ -5,6 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.skills.models import Skill
 from apps.users.models import (
     CareerPreferences,
     CareerProfile,
@@ -44,6 +45,65 @@ class CareerProfileAPITest(APITestCase):
         detail_response = self.client.get(detail_url)
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.data["user"], self.user.pk)
+
+    def test_profile_endpoint_persists_explicitly_selected_skills(self):
+        python = Skill.objects.create(name="Python", slug="python")
+
+        response = self.client.patch(
+            reverse("profile-detail", args=[self.profile.pk]),
+            {"skills": [python.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            list(self.profile.skills.values_list("name", flat=True)),
+            ["Python"],
+        )
+
+    def test_profile_save_links_exact_skill_mentions_from_bio(self):
+        python = Skill.objects.create(name="Python", slug="python")
+        profile = CareerProfile.objects.create(
+            user=User.objects.create_user(
+                username="python-profile",
+                email="python-profile@example.com",
+            ),
+            bio="Experienced Python developer.",
+        )
+
+        self.assertEqual(list(profile.skills.all()), [python])
+
+    def test_experience_skill_selection_is_linked_to_parent_profile(self):
+        python = Skill.objects.create(name="Python", slug="python")
+        experience = Experience.objects.create(
+            career_profile=self.profile,
+            job_title="Backend Engineer",
+            company="Example Corp",
+        )
+
+        experience.skills_used.add(python)
+
+        self.assertEqual(list(self.profile.skills.all()), [python])
+
+    def test_profile_skill_suggestions_endpoint_returns_ambiguous_mentions(self):
+        Skill.objects.create(name="Python", slug="python")
+        Skill.objects.create(name="Docker", slug="docker")
+        self.profile.bio = "Pyhton developer; no experience with Docker."
+        self.profile.save(update_fields=["bio"])
+
+        response = self.client.get(
+            reverse("profile-skill-suggestions", args=[self.profile.pk])
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item["name"] for item in response.data["suggestions"]},
+            {"Python", "Docker"},
+        )
+        self.assertEqual(
+            list(self.profile.skills.values_list("name", flat=True)),
+            [],
+        )
 
     def test_preferences_endpoint_create_and_list(self):
         url = reverse("career-preferences-list")
