@@ -2,10 +2,13 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.applications.models import JobApplication
 from apps.intelligence.embeddings.providers.fake import FakeEmbeddingProvider
 from apps.intelligence.embeddings.services import (
     EmbeddingService,
@@ -106,6 +109,41 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual([result["score"] for result in results], sorted((result["score"] for result in results), reverse=True))
         self.assertTrue(all("explanation" in result and "components" in result for result in results))
         self.assertNotIn(self.expired_job.pk, [result["job"]["id"] for result in results])
+
+    def test_recommendations_include_current_users_application_status(self):
+        JobApplication.objects.create(
+            user=self.user,
+            job=self.strong_job,
+            status=JobApplication.Status.APPLIED,
+        )
+        other_user = get_user_model().objects.create_user(
+            username="other-recommendation-user",
+            email="other-recommendation@example.com",
+            password="test-password",
+        )
+        JobApplication.objects.create(
+            user=other_user,
+            job=self.middle_job,
+            status=JobApplication.Status.INTERVIEW,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/api/recommendations/?limit=50")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        application_queries = [
+            query
+            for query in queries
+            if "jobapplication" in query["sql"].lower()
+        ]
+        self.assertEqual(len(application_queries), 1)
+        statuses = {
+            result["job"]["id"]: result["application_status"]
+            for result in response.data["results"]
+        }
+        self.assertEqual(statuses[self.strong_job.pk], JobApplication.Status.APPLIED)
+        self.assertEqual(statuses[self.middle_job.pk], "not_tracked")
+        self.assertEqual(statuses[self.weak_job.pk], "not_tracked")
 
     def test_experience_skills_and_career_preferences_drive_recommendations(self):
         self.profile.skills.clear()

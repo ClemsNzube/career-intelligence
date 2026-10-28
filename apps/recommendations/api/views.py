@@ -4,6 +4,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.applications.models import JobApplication
 from apps.jobs.models import Job
 from apps.recommendations.api.serializers import RecommendationSerializer
 from apps.recommendations.services.recommend_jobs import DEFAULT_RECOMMENDATION_LIMIT, get_recommended_jobs
@@ -38,6 +39,19 @@ class JobRecommendationsAPIView(GenericAPIView):
         recommendations = get_recommended_jobs(request.user, limit=None)
         if recommendations is None:
             return Response({"detail": "No career profile found for this user."}, status=status.HTTP_404_NOT_FOUND)
+
+        recommendation_job_ids = [item["job"].pk for item in recommendations]
+        application_statuses = dict(
+            JobApplication.objects.filter(
+                user=request.user,
+                job_id__in=recommendation_job_ids,
+            ).values_list("job_id", "status")
+        )
+        for recommendation in recommendations:
+            recommendation["application_status"] = application_statuses.get(
+                recommendation["job"].pk,
+                "not_tracked",
+            )
 
         page = self.paginate_queryset(recommendations)
         serializer = self.get_serializer(page, many=True)

@@ -24,6 +24,7 @@ class RecommendationSerializer(serializers.Serializer):
     rank = serializers.IntegerField()
     score = serializers.FloatField()
     match = serializers.BooleanField()
+    application_status = serializers.CharField(default="not_tracked")
     job = JobSerializer(read_only=True)
     components = serializers.DictField(child=serializers.FloatField())
     scores = RecommendationScoresSerializer()

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.matching',
     'apps.recommendations',
     'apps.intelligence',
+    'apps.applications',
 
 ]
 
