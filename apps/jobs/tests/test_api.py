@@ -37,6 +37,30 @@ class JobAPITest(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["title"], "Senior Python Developer")
 
+    def test_job_discovery_filters_by_title_company_location_and_skills(self):
+        other_job = Job.objects.create(
+            title="Data Engineer",
+            company_name="Acme Labs",
+            description="Build data pipelines.",
+            location="Toronto",
+            work_type="hybrid",
+            employment_type="full_time",
+            application_url="https://example.com/jobs/data-engineer",
+            source="example",
+        )
+        other_job.skills.set([self.skill_django])
+
+        filtered = self.client.get(
+            "/api/jobs/?title=python&company=example&location=remote&skills=Python"
+        )
+        location_search = self.client.get("/api/jobs/?search=Toronto")
+
+        self.assertEqual(filtered.status_code, status.HTTP_200_OK)
+        self.assertEqual(filtered.data["count"], 1)
+        self.assertEqual(filtered.data["results"][0]["id"], self.job.pk)
+        self.assertEqual(location_search.data["count"], 1)
+        self.assertEqual(location_search.data["results"][0]["id"], other_job.pk)
+
     def test_create_job_requires_valid_data(self):
         payload = {
             "title": "Data Engineer",

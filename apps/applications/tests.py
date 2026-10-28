@@ -284,6 +284,53 @@ class JobApplicationAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_dashboard_combines_private_stats_followups_and_recent_applications(self):
+        follow_up_time = timezone.now() + timedelta(days=2)
+        application = JobApplication.objects.create(
+            user=self.user,
+            job=self.job,
+            status=JobApplication.Status.APPLIED,
+            follow_up_at=follow_up_time,
+            notes="Recruiter follow-up.",
+        )
+        other_job = Job.objects.create(
+            title="Other User Job",
+            company_name="Other Corp",
+            description="Build other software.",
+            location="London",
+            work_type="hybrid",
+            employment_type="full_time",
+            application_url="https://example.com/jobs/dashboard-other",
+        )
+        JobApplication.objects.create(
+            user=self.other_user,
+            job=other_job,
+            status=JobApplication.Status.OFFER,
+            follow_up_at=follow_up_time,
+        )
+
+        response = self.client.get(reverse("application-dashboard"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["stats"]["total"], 1)
+        self.assertEqual(response.data["stats"]["applied"], 1)
+        self.assertEqual(
+            [item["id"] for item in response.data["follow_ups"]],
+            [application.pk],
+        )
+        self.assertEqual(
+            [item["id"] for item in response.data["applications"]],
+            [application.pk],
+        )
+        self.assertEqual(response.data["applications"][0]["notes"], "Recruiter follow-up.")
+
+    def test_dashboard_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(reverse("application-dashboard"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_follow_ups_include_due_and_overdue_active_applications_in_date_order(self):
         today = timezone.localdate()
         yesterday_at = timezone.make_aware(

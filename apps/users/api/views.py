@@ -1,4 +1,6 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -33,6 +35,12 @@ class CareerProfileDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class CareerProfileSkillSuggestionsAPIView(APIView):
+    @extend_schema(
+        summary="Suggest skills from profile evidence",
+        description="Return uncertain skill mentions for review without linking them automatically.",
+        responses=OpenApiTypes.OBJECT,
+        tags=["Profiles"],
+    )
     def get(self, request, pk, *args, **kwargs):
         profile = get_object_or_404(
             CareerProfile.objects.prefetch_related(

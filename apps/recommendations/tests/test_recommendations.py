@@ -145,6 +145,23 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual(statuses[self.middle_job.pk], "not_tracked")
         self.assertEqual(statuses[self.weak_job.pk], "not_tracked")
 
+    def test_recommended_job_can_be_saved_directly_to_application_tracker(self):
+        response = self.client.post(
+            "/api/applications/",
+            {"job_id": self.strong_job.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["job"]["id"], self.strong_job.pk)
+        recommendations = self.client.get("/api/recommendations/?limit=50")
+        strong_recommendation = next(
+            item
+            for item in recommendations.data["results"]
+            if item["job"]["id"] == self.strong_job.pk
+        )
+        self.assertEqual(strong_recommendation["application_status"], "saved")
+
     def test_experience_skills_and_career_preferences_drive_recommendations(self):
         self.profile.skills.clear()
         self.experience.skills_used.set([self.python, self.django])

@@ -3,6 +3,8 @@ import json
 
 from django.db.models import Q
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
@@ -28,6 +30,9 @@ class JobListCreateAPIView(ListCreateAPIView):
             queryset = queryset.filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
 
         search = self.request.query_params.get("search", "").strip()
+        title = self.request.query_params.get("title", "").strip()
+        company = self.request.query_params.get("company", "").strip()
+        location = self.request.query_params.get("location", "").strip()
         work_type = self.request.query_params.get("work_type")
         employment_type = self.request.query_params.get("employment_type")
         skills = self.request.query_params.getlist("skills")
@@ -38,8 +43,18 @@ class JobListCreateAPIView(ListCreateAPIView):
                 Q(title__icontains=search)
                 | Q(company_name__icontains=search)
                 | Q(description__icontains=search)
+                | Q(location__icontains=search)
                 | Q(skills__name__icontains=search)
             ).distinct()
+
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+
+        if company:
+            queryset = queryset.filter(company_name__icontains=company)
+
+        if location:
+            queryset = queryset.filter(location__icontains=location)
 
         if work_type:
             queryset = queryset.filter(work_type=work_type)
@@ -90,6 +105,12 @@ class JobDetailAPIView(RetrieveUpdateDestroyAPIView):
 
 
 class JobMatchAPIView(APIView):
+    @extend_schema(
+        summary="Match a job to the current user's profile",
+        description="Return rule-based matching scores and component explanations for a job.",
+        responses=OpenApiTypes.OBJECT,
+        tags=["Jobs"],
+    )
     def get(self, request, pk, *args, **kwargs):
         try:
             job = Job.objects.prefetch_related("skills").get(pk=pk)
@@ -167,6 +188,13 @@ class JobIngestAPIView(APIView):
 
         return None, []
 
+    @extend_schema(
+        summary="Ingest jobs",
+        description="Ingest one or more job records for the supplied source and return ingestion counts.",
+        request=OpenApiTypes.OBJECT,
+        responses=OpenApiTypes.OBJECT,
+        tags=["Jobs"],
+    )
     def post(self, request, *args, **kwargs):
         source_slug, jobs_value = self._extract_request_data(request)
         source_slug = (source_slug or "linkedin").strip() or "linkedin"

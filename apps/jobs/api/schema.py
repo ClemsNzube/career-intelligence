@@ -1,10 +1,28 @@
-from drf_spectacular.utils import OpenApiExample, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 
 
 job_list_schema = extend_schema(
     tags=["Jobs"],
     summary="List and create jobs",
-    description="Retrieve a paginated list of jobs or create a new job posting.",
+    description=(
+        "Retrieve a paginated list of active jobs or create a job posting. "
+        "Combine title, company, location, skills, work_type, and employment_type "
+        "filters to discover relevant opportunities. The search parameter also "
+        "matches title, company, description, location, and skill names."
+    ),
+    parameters=[
+        OpenApiParameter("search", OpenApiTypes.STR, description="Search across title, company, description, location, and skills."),
+        OpenApiParameter("title", OpenApiTypes.STR, description="Filter by a partial job title."),
+        OpenApiParameter("company", OpenApiTypes.STR, description="Filter by a partial company name."),
+        OpenApiParameter("location", OpenApiTypes.STR, description="Filter by a partial location."),
+        OpenApiParameter(
+            "skills",
+            OpenApiTypes.STR,
+            many=True,
+            description="Filter by one or more exact skill names; repeat the parameter or provide comma-separated names.",
+        ),
+    ],
     examples=[
         OpenApiExample(
             "Job creation example",

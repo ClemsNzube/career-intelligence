@@ -72,7 +72,7 @@ class Job(models.Model):
         return text.strip()
 
     @property
-    def is_expired(self):
+    def is_expired(self) -> bool:
         return self.expires_at is not None and self.expires_at <= timezone.now()
 
     def save(self, *args, **kwargs):

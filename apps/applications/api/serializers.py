@@ -11,6 +11,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         source="job",
         queryset=Job.objects.all(),
         write_only=True,
+        help_text="Use the job ID from a discovery or recommendation response to track that job.",
     )
 
     class Meta:
@@ -41,3 +42,19 @@ class JobApplicationSerializer(serializers.ModelSerializer):
                     {"job_id": "You are already tracking this job."}
                 )
         return attrs
+
+
+class ApplicationStatsSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    saved = serializers.IntegerField()
+    applied = serializers.IntegerField()
+    interview = serializers.IntegerField()
+    offer = serializers.IntegerField()
+    rejected = serializers.IntegerField()
+    withdrawn = serializers.IntegerField()
+
+
+class ApplicationDashboardSerializer(serializers.Serializer):
+    stats = ApplicationStatsSerializer()
+    follow_ups = JobApplicationSerializer(many=True)
+    applications = JobApplicationSerializer(many=True)
