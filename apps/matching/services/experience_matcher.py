@@ -10,7 +10,7 @@ class ExperienceMatcher:
         required_years = float(required_years or 0)
 
         if required_years <= 0:
-            return 0.0
+            return 1.0
 
         if candidate_years >= required_years:
             return 1.0

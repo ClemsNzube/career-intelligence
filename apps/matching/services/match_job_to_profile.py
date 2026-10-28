@@ -145,7 +145,7 @@ class JobProfileMatcher:
         experience_reason = (
             f"Candidate has {profile_years} years of experience; the role requires {job_required_years}."
             if job_required_years
-            else "No minimum experience requirement was specified for this role; no experience-match credit was awarded."
+            else "No minimum experience requirement was specified for this role; full experience-match credit was awarded."
         )
         work_type_reason = (
             f"Candidate prefers {profile_work_type or 'unspecified'} work type; the role is {job_work_type or 'unspecified'}."

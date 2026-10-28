@@ -96,7 +96,7 @@ class JobProfileMatchingEngineTests(SimpleTestCase):
         self.assertEqual(result["explanation"]["components"][4]["reason"], "No preferred job title was specified.")
         self.assertIn("none", result["explanation"]["components"][0]["reason"])
 
-    def test_missing_requirements_and_preferences_receive_no_match_credit(self):
+    def test_missing_requirements_receive_no_credit_except_unrestricted_experience(self):
         result = match_job_to_profile(
             {
                 "skills": ["Python"],
@@ -115,11 +115,15 @@ class JobProfileMatchingEngineTests(SimpleTestCase):
         )
 
         self.assertEqual(result["skill"], 0.0)
-        self.assertEqual(result["experience"], 0.0)
+        self.assertEqual(result["experience"], 1.0)
         self.assertEqual(result["work_type"], 0.0)
         self.assertEqual(result["location"], 0.0)
         self.assertEqual(result["title"], 0.0)
-        self.assertEqual(result["score"], 0.0)
+        self.assertEqual(result["score"], 0.2)
+        self.assertIn(
+            "full experience-match credit was awarded",
+            result["explanation"]["components"][1]["reason"],
+        )
 
     def test_profile_target_job_titles_are_used_for_title_matching(self):
         result = match_job_to_profile(
