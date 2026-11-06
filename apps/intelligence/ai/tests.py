@@ -235,7 +235,7 @@ class OllamaIntelligenceProviderTests(SimpleTestCase):
         self.assertEqual(body["format"], "json")
         self.assertFalse(body["stream"])
         self.assertEqual(body["options"]["num_ctx"], 4096)
-        self.assertEqual(body["options"]["num_predict"], 768)
+        self.assertEqual(body["options"]["num_predict"], 1536)
         self.assertEqual(result["extraction_method"], "ollama")
         self.assertTrue(result["review_required"])
 
@@ -256,6 +256,18 @@ class OllamaIntelligenceProviderTests(SimpleTestCase):
         self.assertEqual(
             evaluation_schema["properties"]["suitability_score"]["maximum"],
             100,
+        )
+        self.assertEqual(
+            evaluation_schema["properties"]["explanation"]["maxLength"],
+            300,
+        )
+        self.assertEqual(
+            evaluation_schema["properties"]["evidence"]["maxItems"],
+            1,
+        )
+        self.assertEqual(
+            evaluation_schema["properties"]["strengths"]["maxItems"],
+            2,
         )
         self.assertEqual(
             response_schema["properties"]["evaluations"]["minItems"],
@@ -318,6 +330,21 @@ class OllamaIntelligenceProviderTests(SimpleTestCase):
             result[41]["evidence"],
             [{"candidate_quote": "Built Python services.", "job_quote": ""}],
         )
+
+    @patch("apps.intelligence.ai.providers.ollama.urlopen")
+    def test_truncated_ollama_response_has_clear_error(self, urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(
+            {
+                "done_reason": "length",
+                "message": {"content": '{"evaluations": ['},
+            }
+        ).encode()
+        urlopen.return_value = response
+        provider = OllamaIntelligenceProvider()
+
+        with self.assertRaisesRegex(AIProviderError, "response token limit"):
+            provider._complete_json("system", {"candidate": {}, "jobs": []})
 
     @patch(
         "apps.intelligence.ai.providers.ollama.urlopen",

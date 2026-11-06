@@ -46,8 +46,8 @@ class OllamaIntelligenceProvider(StructuredIntelligenceProvider):
         evidence_schema = {
             "type": "object",
             "properties": {
-                "candidate_quote": {"type": "string"},
-                "job_quote": {"type": "string"},
+                "candidate_quote": {"type": "string", "maxLength": 160},
+                "job_quote": {"type": "string", "maxLength": 160},
             },
             "required": ["candidate_quote", "job_quote"],
             "additionalProperties": False,
@@ -64,17 +64,26 @@ class OllamaIntelligenceProvider(StructuredIntelligenceProvider):
                     "minimum": 0,
                     "maximum": 100,
                 },
-                "strengths": {"type": "array", "items": {"type": "string"}},
+                "strengths": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 2,
+                },
                 "missing_requirements": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 2,
                 },
-                "concerns": {"type": "array", "items": {"type": "string"}},
-                "explanation": {"type": "string"},
+                "concerns": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 2,
+                },
+                "explanation": {"type": "string", "maxLength": 300},
                 "evidence": {
                     "type": "array",
                     "items": evidence_schema,
-                    "maxItems": 20,
+                    "maxItems": 1,
                 },
             },
             "required": [
@@ -111,7 +120,7 @@ class OllamaIntelligenceProvider(StructuredIntelligenceProvider):
                 "options": {
                     "temperature": 0,
                     "num_ctx": 4096,
-                    "num_predict": 768,
+                    "num_predict": 1536,
                 },
                 "messages": [
                     {"role": "system", "content": system_prompt},
@@ -165,6 +174,11 @@ class OllamaIntelligenceProvider(StructuredIntelligenceProvider):
 
         if not isinstance(response_data, dict):
             raise AIProviderError("Ollama returned an invalid response object.")
+        if response_data.get("done_reason") == "length":
+            raise AIProviderError(
+                "Ollama reached its response token limit before completing the evaluation. "
+                "The output was discarded; reduce the number of jobs or use a faster model."
+            )
         message = response_data.get("message")
         content = message.get("content") if isinstance(message, dict) else None
         try:
