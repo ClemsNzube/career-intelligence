@@ -10,7 +10,9 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from rest_framework import status
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
+from apps.intelligence.ai.providers.openai import OpenAIIntelligenceProvider
 from apps.skills.models import Skill
 from apps.users.models import CVDocument, CareerProfile
 
@@ -115,6 +117,43 @@ class CVDocumentAPITests(TestCase):
         )
         self.assertEqual(document.extracted_data["extraction_method"], "rule_based")
         self.assertTrue(document.extracted_data["review_required"])
+
+    @override_settings(
+        CV_CANDIDATE_INTELLIGENCE_PROVIDER=(
+            "apps.intelligence.ai.providers.openai.OpenAIIntelligenceProvider"
+        ),
+        OPENAI_API_KEY="test-key",
+    )
+    def test_cv_upload_can_use_configured_ai_candidate_extractor(self):
+        ai_result = {
+            "summary": "Backend engineer",
+            "career_level": "Senior",
+            "skills": ["Python"],
+            "transferable_skills": ["Mentoring"],
+            "achievements": ["Improved deployment time"],
+            "experience": [{"title": "Engineer", "company": "Example Corp"}],
+            "education": [],
+            "projects": [],
+            "extraction_method": "openai",
+            "review_required": True,
+        }
+        with patch.object(
+            OpenAIIntelligenceProvider,
+            "extract",
+            return_value=ai_result,
+        ) as extract:
+            response = self.client.post(
+                self.list_url,
+                {"file": self.make_docx()},
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        document = CVDocument.objects.get(pk=response.data["id"])
+        self.assertEqual(document.status, CVDocument.Status.REVIEW)
+        self.assertEqual(document.extracted_data["career_level"], "Senior")
+        self.assertEqual(document.extracted_data["achievements"], ["Improved deployment time"])
+        extract.assert_called_once()
 
     def test_pdf_upload_extracts_text_and_is_available_for_download(self):
         response = self.client.post(

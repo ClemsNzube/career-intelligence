@@ -146,6 +146,8 @@ CV_CANDIDATE_INTELLIGENCE_PROVIDER = os.getenv(
     "CV_CANDIDATE_INTELLIGENCE_PROVIDER",
     "",
 )
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 
 # Email

@@ -8,6 +8,7 @@ from apps.users.services.cv_parser import (
     RuleBasedCandidateExtractor,
     extract_cv_text,
 )
+from apps.intelligence.ai.providers.openai import AIProviderError
 
 
 def process_cv_document(
@@ -36,11 +37,11 @@ def process_cv_document(
         structured_data = extractor.extract(text)
         if not isinstance(structured_data, dict):
             raise TypeError("Candidate extractor must return a dictionary.")
-    except (CVParseError, OSError) as exc:
+    except (CVParseError, OSError, AIProviderError) as exc:
         document.status = CVDocument.Status.FAILED
         document.error_message = (
             str(exc)
-            if isinstance(exc, CVParseError)
+            if isinstance(exc, (CVParseError, AIProviderError))
             else "The original CV file could not be read from storage."
         )
         document.save(update_fields=["status", "error_message", "updated_at"])

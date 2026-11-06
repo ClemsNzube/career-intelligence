@@ -72,6 +72,8 @@ POSTGRES_USER=career_user
 POSTGRES_PASSWORD=career_password
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5433
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 Generate a suitable local secret with:
@@ -131,6 +133,24 @@ a provider can be configured with the dotted class path in
 `CV_CANDIDATE_INTELLIGENCE_PROVIDER` without changing upload or review behavior.
 Configured providers must implement `CandidateIntelligenceProvider`; no CV text
 is sent to an external AI service by default.
+
+### Optional OpenAI intelligence
+
+Install dependencies from `requirements.txt`, set `OPENAI_API_KEY` in the
+untracked local `.env`, and set
+`CV_CANDIDATE_INTELLIGENCE_PROVIDER=apps.intelligence.ai.providers.openai.OpenAIIntelligenceProvider`
+to use OpenAI for CV interpretation. Without that provider setting, CV uploads
+continue to use the local rule-based extractor. OpenAI interpretation sends CV
+text to OpenAI and should only be enabled with the user's informed consent.
+
+For AI job evaluation, explicitly request
+`GET /api/recommendations/?include_ai=true`. This requires an approved CV and
+`OPENAI_API_KEY`. The engine evaluates and reranks the top ten hybrid
+recommendations, blending the existing hybrid score (75%) with AI suitability
+(25%). The AI evaluation is an additional signal, not a substitute for the
+existing matching explanation. Requests without `include_ai=true` make no
+OpenAI call and preserve the existing scores and ranking. AI failures return an
+explicit error; they do not silently fall back to a success-shaped response.
 
 The recommendation endpoint requires authentication and a career profile for
 the authenticated user. Use `?limit=10` to request a page size from 1 to 50;

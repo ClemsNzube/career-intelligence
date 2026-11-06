@@ -8,6 +8,8 @@ class RecommendationScoresSerializer(serializers.Serializer):
     semantic = serializers.FloatField(allow_null=True)
     final = serializers.FloatField()
     semantic_available = serializers.BooleanField()
+    hybrid = serializers.FloatField(allow_null=True, default=None)
+    ai = serializers.FloatField(allow_null=True, default=None)
 
 
 class RecommendationExplanationSerializer(serializers.Serializer):
@@ -18,6 +20,22 @@ class RecommendationExplanationSerializer(serializers.Serializer):
     recommendation = serializers.CharField()
     matched_skills = serializers.ListField(child=serializers.CharField())
     missing_skills = serializers.ListField(child=serializers.CharField())
+
+
+class CandidateJobEvidenceSerializer(serializers.Serializer):
+    candidate_quote = serializers.CharField(allow_blank=True)
+    job_quote = serializers.CharField(allow_blank=True)
+
+
+class AIJobEvaluationSerializer(serializers.Serializer):
+    suitability_score = serializers.IntegerField(min_value=0, max_value=100)
+    strengths = serializers.ListField(child=serializers.CharField())
+    missing_requirements = serializers.ListField(child=serializers.CharField())
+    concerns = serializers.ListField(child=serializers.CharField())
+    explanation = serializers.CharField()
+    evidence = CandidateJobEvidenceSerializer(many=True)
+    hybrid_score = serializers.FloatField(min_value=0, max_value=1)
+    blended_score = serializers.FloatField(min_value=0, max_value=1)
 
 
 class RecommendationSerializer(serializers.Serializer):
@@ -31,6 +49,7 @@ class RecommendationSerializer(serializers.Serializer):
             "job.id to /api/applications/ as job_id."
         ),
     )
+    ai_evaluation = AIJobEvaluationSerializer(allow_null=True, default=None)
     job = JobSerializer(read_only=True)
     components = serializers.DictField(child=serializers.FloatField())
     scores = RecommendationScoresSerializer()

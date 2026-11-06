@@ -1,8 +1,11 @@
 from datetime import date, timedelta
+import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
@@ -17,7 +20,8 @@ from apps.intelligence.embeddings.services import (
 )
 from apps.jobs.models import Job
 from apps.skills.models import Skill
-from apps.users.models import CareerPreferences, CareerProfile, Experience
+from apps.users.models import CVDocument, CareerPreferences, CareerProfile, Experience
+from apps.intelligence.ai.providers.openai import AIProviderError, OpenAIIntelligenceProvider
 
 
 class JobRecommendationsAPITests(APITestCase):
@@ -161,6 +165,113 @@ class JobRecommendationsAPITests(APITestCase):
             if item["job"]["id"] == self.strong_job.pk
         )
         self.assertEqual(strong_recommendation["application_status"], "saved")
+
+    def test_ai_evaluations_blend_with_hybrid_scores_without_external_call_in_test(self):
+        evaluations = {
+            job.pk: {
+                "suitability_score": score,
+                "strengths": ["Evidence-backed Python experience"],
+                "missing_requirements": [],
+                "concerns": [],
+                "explanation": "Evaluation based on the approved CV and job listing.",
+                "evidence": [],
+            }
+            for job, score in (
+                (self.strong_job, 0),
+                (self.middle_job, 100),
+                (self.weak_job, 100),
+            )
+        }
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root, OPENAI_API_KEY="test-key"):
+                document = CVDocument.objects.create(
+                    user=self.user,
+                    file=ContentFile(b"approved CV", name="approved.docx"),
+                    original_filename="approved.docx",
+                    status=CVDocument.Status.APPROVED,
+                    extracted_text="Built Python services.",
+                    extracted_data={"skills": ["Python"]},
+                )
+                try:
+                    with patch.object(
+                        OpenAIIntelligenceProvider,
+                        "evaluate_jobs",
+                        return_value=evaluations,
+                    ) as evaluate:
+                        response = self.client.get(
+                            "/api/recommendations/?include_ai=true&limit=10"
+                        )
+                finally:
+                    document.delete()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(evaluate.call_count, 1)
+        results = response.data["results"]
+        self.assertEqual(len(results), 3)
+        for item in results:
+            evaluation = item["ai_evaluation"]
+            expected_score = (
+                evaluation["hybrid_score"] * 0.75
+                + evaluation["suitability_score"] / 100 * 0.25
+            )
+            self.assertAlmostEqual(item["score"], expected_score)
+            self.assertAlmostEqual(item["scores"]["final"], expected_score)
+            self.assertAlmostEqual(evaluation["blended_score"], expected_score)
+            self.assertEqual(item["scores"]["hybrid"], evaluation["hybrid_score"])
+        self.assertEqual(
+            [item["score"] for item in results],
+            sorted((item["score"] for item in results), reverse=True),
+        )
+
+    @override_settings(OPENAI_API_KEY="test-key")
+    def test_ai_evaluation_requires_an_approved_cv(self):
+        response = self.client.get("/api/recommendations/?include_ai=true")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("Approve a CV", response.data["detail"])
+
+    @override_settings(OPENAI_API_KEY="")
+    def test_ai_evaluation_requires_provider_configuration(self):
+        response = self.client.get("/api/recommendations/?include_ai=true")
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn("OPENAI_API_KEY", response.data["detail"])
+
+    def test_ai_evaluation_rejects_invalid_flags_and_second_page(self):
+        invalid_flag = self.client.get("/api/recommendations/?include_ai=sometimes")
+        second_page = self.client.get(
+            "/api/recommendations/?include_ai=true&page=2"
+        )
+
+        self.assertEqual(invalid_flag.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(second_page.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_settings(OPENAI_API_KEY="test-key")
+    def test_ai_provider_failure_is_reported_without_changing_normal_endpoint(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                document = CVDocument.objects.create(
+                    user=self.user,
+                    file=ContentFile(b"approved CV", name="approved.docx"),
+                    original_filename="approved.docx",
+                    status=CVDocument.Status.APPROVED,
+                    extracted_text="Built Python services.",
+                    extracted_data={"skills": ["Python"]},
+                )
+                try:
+                    with patch.object(
+                        OpenAIIntelligenceProvider,
+                        "evaluate_jobs",
+                        side_effect=AIProviderError("provider unavailable"),
+                    ):
+                        response = self.client.get(
+                            "/api/recommendations/?include_ai=true"
+                        )
+                finally:
+                    document.delete()
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("AI evaluation failed", response.data["detail"])
 
     def test_experience_skills_and_career_preferences_drive_recommendations(self):
         self.profile.skills.clear()
