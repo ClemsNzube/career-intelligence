@@ -2,7 +2,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.jobs.models import Job, JobIngestionLog, JobSource
+from apps.jobs.models import Job, JobIngestionLog, JobSource, JobSourceListing
 from apps.jobs.services.ingestion import JobIngestionService
 
 
@@ -109,3 +109,95 @@ class JobIngestionServiceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["created_count"], 1)
         self.assertEqual(Job.objects.filter(company_name="Launch Labs").count(), 1)
+
+    def test_same_job_from_multiple_sources_preserves_each_listing_and_application_url(self):
+        first_payload = {
+            "external_id": "alpha-001",
+            "title": "Senior Python Developer",
+            "company_name": "Example Corp",
+            "description": "Build backend services and APIs.",
+            "location": "Remote",
+            "work_type": "remote",
+            "employment_type": "full_time",
+            "application_url": "https://alpha.example/jobs/alpha-001",
+            "source_url": "https://alpha.example/listings/alpha-001",
+            "source": "alpha",
+            "skills": ["Python"],
+        }
+        first_result = JobIngestionService(source=self.source).ingest([first_payload])
+        first_job = Job.objects.get()
+        second_source = JobSource.objects.create(
+            name="Beta",
+            slug="beta",
+            base_url="https://beta.example",
+        )
+        second_payload = {
+            **first_payload,
+            "external_id": "beta-001",
+            "application_url": "https://beta.example/jobs/beta-001",
+            "source_url": "https://beta.example/listings/beta-001",
+            "source": "beta",
+        }
+
+        second_result = JobIngestionService(source=second_source).ingest([second_payload])
+
+        self.assertEqual(first_result["created_count"], 1)
+        self.assertEqual(second_result["updated_count"], 1)
+        self.assertEqual(Job.objects.count(), 1)
+        self.assertEqual(
+            set(
+                JobSourceListing.objects.filter(job=first_job).values_list(
+                    "application_url", flat=True
+                )
+            ),
+            {
+                "https://alpha.example/jobs/alpha-001",
+                "https://beta.example/jobs/beta-001",
+            },
+        )
+        self.assertEqual(
+            set(
+                JobSourceListing.objects.filter(job=first_job).values_list(
+                    "source_listing_id", flat=True
+                )
+            ),
+            {"alpha-001", "beta-001"},
+        )
+        response = self.client.get(f"/api/jobs/{first_job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["source_listings"]), 2)
+        self.assertEqual(
+            {listing["source"] for listing in response.data["source_listings"]},
+            {"linkedin", "beta"},
+        )
+
+    def test_same_external_id_is_allowed_for_different_sources(self):
+        first = {
+            "external_id": "shared-id",
+            "title": "Python Engineer",
+            "company_name": "Alpha Corp",
+            "description": "Build alpha systems.",
+            "location": "Remote",
+            "work_type": "remote",
+            "employment_type": "full_time",
+            "application_url": "https://alpha.example/jobs/shared-id",
+        }
+        JobIngestionService(source=self.source).ingest([first])
+        second_source = JobSource.objects.create(
+            name="Beta",
+            slug="beta",
+            base_url="https://beta.example",
+        )
+        second = {
+            **first,
+            "title": "Data Engineer",
+            "company_name": "Beta Corp",
+            "description": "Build beta systems.",
+            "application_url": "https://beta.example/jobs/shared-id",
+        }
+
+        result = JobIngestionService(source=second_source).ingest([second])
+
+        self.assertEqual(result["created_count"], 1)
+        self.assertEqual(result["failed_count"], 0)
+        self.assertEqual(Job.objects.count(), 2)

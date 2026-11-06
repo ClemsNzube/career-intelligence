@@ -2,7 +2,7 @@ from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.jobs.models import Job
+from apps.jobs.models import Job, JobSourceListing
 from apps.skills.models import Skill
 
 
@@ -33,8 +33,25 @@ class SkillNamesField(serializers.Field):
         return cleaned
 
 
+class JobSourceListingSerializer(serializers.ModelSerializer):
+    source = serializers.SlugRelatedField(read_only=True, slug_field="slug")
+
+    class Meta:
+        model = JobSourceListing
+        fields = [
+            "source",
+            "source_listing_id",
+            "source_url",
+            "application_url",
+            "first_seen_at",
+            "last_seen_at",
+        ]
+        read_only_fields = fields
+
+
 class JobSerializer(serializers.ModelSerializer):
     skills = SkillNamesField(required=False, allow_null=True)
+    source_listings = JobSourceListingSerializer(many=True, read_only=True)
 
     class Meta:
         model = Job
@@ -54,6 +71,7 @@ class JobSerializer(serializers.ModelSerializer):
             "posted_at",
             "expires_at",
             "skills",
+            "source_listings",
             "created_at",
             "updated_at",
             "is_expired",
@@ -68,7 +86,6 @@ class JobSerializer(serializers.ModelSerializer):
             "location",
             "work_type",
             "employment_type",
-            "industry",
             "application_url",
         ]:
             value = attrs.get(field_name)
@@ -97,11 +114,22 @@ class JobSerializer(serializers.ModelSerializer):
 
         external_id = (attrs.get("external_id") or "").strip()
         if external_id:
-            queryset = Job.objects.filter(external_id=external_id)
+            source = attrs.get(
+                "source",
+                self.instance.source if self.instance is not None else "",
+            )
+            queryset = Job.objects.filter(external_id=external_id, source=source)
             if self.instance:
                 queryset = queryset.exclude(pk=self.instance.pk)
             if queryset.exists():
-                raise serializers.ValidationError({"external_id": "A job with this external identifier already exists."})
+                raise serializers.ValidationError(
+                    {
+                        "external_id": (
+                            "A job with this external identifier already exists "
+                            "for this source."
+                        )
+                    }
+                )
 
         title = (attrs.get("title") or "").strip()
         company_name = (attrs.get("company_name") or "").strip()
@@ -162,4 +190,3 @@ class JobSerializer(serializers.ModelSerializer):
             self._sync_skills(instance, skill_names)
 
         return instance
-

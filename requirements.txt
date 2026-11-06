@@ -4,4 +4,6 @@ drf-spectacular==0.30.0
 fastembed==0.8.1
 pgvector==0.5.0
 psycopg[binary]==3.3.5
+pypdf>=5.0,<7.0
+python-docx>=1.1,<2.0
 python-dotenv==1.2.3

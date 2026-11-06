@@ -8,7 +8,11 @@ with deterministic explanations.
 
 - Career profiles, preferences, skills, experience, education, certifications,
   and projects.
+- Private PDF/DOCX CV uploads with text extraction, editable structured
+  suggestions, and explicit approval before candidate-profile updates.
 - Job listing, filtering, management, and ingestion endpoints.
+- Per-source listing provenance, original source/application links, and
+  cross-source duplicate consolidation.
 - Rule-based matching across skills, experience, work type, location, and title.
 - Hybrid recommendations combining rule-based scores (60%) and semantic
   similarity (40%) when both profile and job embeddings are available.
@@ -103,6 +107,30 @@ at `http://127.0.0.1:8000/api/docs/`.
 | `POST` | `/api/jobs/ingest/` | Ingest job postings |
 | `GET` | `/api/jobs/{id}/match/` | Get a rule-based match for one job |
 | `GET` | `/api/recommendations/` | Get the authenticated user's ranked recommendations |
+| `GET`, `POST` | `/api/cvs/` | List or upload the authenticated user's CVs |
+| `GET`, `PATCH`, `DELETE` | `/api/cvs/{id}/` | Review/edit extraction or delete a CV |
+| `GET` | `/api/cvs/{id}/download/` | Download the original CV |
+| `POST` | `/api/cvs/{id}/approve/` | Apply reviewed summary and known skills to the career profile |
+| `GET`, `POST` | `/api/applications/` | List or track jobs for the authenticated user |
+| `GET` | `/api/applications/dashboard/` | Get tracking counts, scheduled follow-ups, and recent applications |
+| `GET` | `/api/applications/follow-ups/` | Get due or overdue follow-ups |
+| `GET` | `/api/applications/stats/` | Get application-status counts |
+
+### CV upload and review
+
+Upload a PDF or DOCX as multipart form data using the `file` field. Files are
+limited to 10 MB. Text is extracted locally; scanned PDFs that require OCR are
+reported as failed rather than sent to an external service. Extracted sections
+are saved as editable candidate suggestions and do not change a career profile
+until the owner calls the approve endpoint. Original CV downloads are served
+through an authenticated, owner-scoped endpoint.
+
+The default candidate extractor is rule-based and does not require an LLM. The
+document parser and candidate-intelligence extractor are separate services, so
+a provider can be configured with the dotted class path in
+`CV_CANDIDATE_INTELLIGENCE_PROVIDER` without changing upload or review behavior.
+Configured providers must implement `CandidateIntelligenceProvider`; no CV text
+is sent to an external AI service by default.
 
 The recommendation endpoint requires authentication and a career profile for
 the authenticated user. Use `?limit=10` to request a page size from 1 to 50;

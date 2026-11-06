@@ -23,7 +23,10 @@ class JobListCreateAPIView(ListCreateAPIView):
     serializer_class = JobSerializer
 
     def get_queryset(self):
-        queryset = Job.objects.prefetch_related("skills").all()
+        queryset = Job.objects.prefetch_related(
+            "skills",
+            "source_listings__source",
+        ).all()
 
         include_expired = str(self.request.query_params.get("include_expired", "false")).lower() == "true"
         if not include_expired:
@@ -100,7 +103,10 @@ class JobListCreateAPIView(ListCreateAPIView):
 
 @job_detail_schema
 class JobDetailAPIView(RetrieveUpdateDestroyAPIView):
-    queryset = Job.objects.prefetch_related("skills").all()
+    queryset = Job.objects.prefetch_related(
+        "skills",
+        "source_listings__source",
+    ).all()
     serializer_class = JobSerializer
 
 
@@ -113,7 +119,10 @@ class JobMatchAPIView(APIView):
     )
     def get(self, request, pk, *args, **kwargs):
         try:
-            job = Job.objects.prefetch_related("skills").get(pk=pk)
+            job = Job.objects.prefetch_related(
+                "skills",
+                "source_listings__source",
+            ).get(pk=pk)
         except Job.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 

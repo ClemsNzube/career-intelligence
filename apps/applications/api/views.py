@@ -39,7 +39,7 @@ def _user_applications(user):
     return (
         JobApplication.objects.filter(user=user)
         .select_related("job")
-        .prefetch_related("job__skills")
+        .prefetch_related("job__skills", "job__source_listings__source")
     )
 
 
@@ -51,7 +51,7 @@ class JobApplicationListCreateAPIView(generics.ListCreateAPIView):
         return (
             JobApplication.objects.filter(user=self.request.user)
             .select_related("job")
-            .prefetch_related("job__skills")
+            .prefetch_related("job__skills", "job__source_listings__source")
             .order_by("-updated_at", "-pk")
         )
 
@@ -67,7 +67,7 @@ class JobApplicationDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         return (
             JobApplication.objects.filter(user=self.request.user)
             .select_related("job")
-            .prefetch_related("job__skills")
+            .prefetch_related("job__skills", "job__source_listings__source")
         )
 
 
@@ -96,7 +96,7 @@ class ApplicationFollowUpsView(ListAPIView):
                 status__in=ACTIVE_FOLLOW_UP_STATUSES,
             )
             .select_related("job")
-            .prefetch_related("job__skills")
+            .prefetch_related("job__skills", "job__source_listings__source")
             .order_by("follow_up_at", "pk")
         )
 

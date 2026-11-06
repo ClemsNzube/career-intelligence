@@ -1,3 +1,3 @@
-from .job import Job, JobIngestionLog, JobSource
+from .job import Job, JobIngestionLog, JobSource, JobSourceListing
 
-__all__ = ["Job", "JobIngestionLog", "JobSource"]
+__all__ = ["Job", "JobIngestionLog", "JobSource", "JobSourceListing"]

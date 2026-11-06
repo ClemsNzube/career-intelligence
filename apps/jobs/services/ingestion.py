@@ -5,7 +5,7 @@ from typing import Any
 from django.db import transaction
 
 from apps.jobs.api.serializers import JobSerializer
-from apps.jobs.models import Job, JobIngestionLog, JobSource
+from apps.jobs.models import Job, JobIngestionLog, JobSource, JobSourceListing
 from apps.skills.models import Skill
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class ParsedJob:
     skills: list[str]
     posted_at: str | None = None
     expires_at: str | None = None
+    source_url: str = ""
 
 
 class JobParser:
@@ -47,6 +48,7 @@ class JobParser:
             skills=[str(item).strip() for item in (raw_job.get("skills") or []) if str(item).strip()],
             posted_at=raw_job.get("posted_at"),
             expires_at=raw_job.get("expires_at"),
+            source_url=(raw_job.get("source_url") or raw_job.get("application_url") or "").strip(),
         )
 
 
@@ -68,12 +70,20 @@ class JobIngestionService:
                     raise ValueError("Title, company_name, and application_url are required.")
 
                 job = self._get_existing_job(parsed)
-                serializer = JobSerializer(instance=job, data=self._build_payload(parsed), partial=bool(job))
+                payload = self._build_payload(parsed)
+                if job is not None:
+                    payload.update(
+                        source=job.source,
+                        external_id=job.external_id,
+                        application_url=job.application_url,
+                    )
+                serializer = JobSerializer(instance=job, data=payload, partial=bool(job))
                 serializer.is_valid(raise_exception=True)
 
                 with transaction.atomic():
                     saved_job = serializer.save()
                     self._sync_skill_names(saved_job, parsed.skills)
+                    self._record_source_listing(saved_job, parsed, raw_job)
 
                 if job is None:
                     created_count += 1
@@ -107,16 +117,58 @@ class JobIngestionService:
         }
 
     def _get_existing_job(self, parsed: ParsedJob):
+        listing_lookup = JobSourceListing.objects.filter(source=self.source)
         if parsed.external_id:
-            existing = Job.objects.filter(external_id=parsed.external_id, source=self.source.slug).first()
+            listing = listing_lookup.filter(source_listing_id=parsed.external_id).select_related("job").first()
+            if listing:
+                return listing.job
+
+            existing = Job.objects.filter(
+                external_id=parsed.external_id,
+                source=self.source.slug,
+            ).first()
             if existing:
                 return existing
 
-        return Job.objects.filter(
+        source_url = parsed.source_url or parsed.application_url
+        existing_listing = listing_lookup.filter(
+            source_url=source_url,
+        ).select_related("job").first()
+        if existing_listing:
+            return existing_listing.job
+
+        exact_duplicate = Job.objects.filter(
             title__iexact=Job.normalize_title(parsed.title),
-            company_name__iexact=parsed.company_name,
+            company_name__iexact=parsed.company_name.strip(),
+            location__iexact=parsed.location.strip(),
+            work_type=parsed.work_type,
+            employment_type=parsed.employment_type,
+            description=Job.clean_description(parsed.description),
+        ).first()
+        if exact_duplicate:
+            return exact_duplicate
+
+        return Job.objects.filter(
+            source=self.source.slug,
             application_url__iexact=parsed.application_url,
         ).first()
+
+    def _record_source_listing(self, job: Job, parsed: ParsedJob, raw_job: dict[str, Any]):
+        lookup = {"source": self.source}
+        if parsed.external_id:
+            lookup["source_listing_id"] = parsed.external_id
+        else:
+            lookup["source_url"] = parsed.source_url or parsed.application_url
+        JobSourceListing.objects.update_or_create(
+            **lookup,
+            defaults={
+                "job": job,
+                "source_listing_id": parsed.external_id or "",
+                "source_url": parsed.source_url or parsed.application_url,
+                "application_url": parsed.application_url,
+                "raw_payload": raw_job,
+            },
+        )
 
     def _build_payload(self, parsed: ParsedJob) -> dict[str, Any]:
         return {

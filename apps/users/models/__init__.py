@@ -5,5 +5,6 @@ from .education import Education
 from .experience import Experience
 from .certification import Certification
 from .project import Project
+from .cv_document import CVDocument
 
-__all__ = ["CareerProfile", "CareerPreferences", "Education", "Experience", "Certification", "Project", "User"]
+__all__ = ["CareerProfile", "CareerPreferences", "Education", "Experience", "Certification", "Project", "CVDocument", "User"]

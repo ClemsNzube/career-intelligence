@@ -41,12 +41,21 @@ class Job(models.Model):
     min_years_experience = models.PositiveIntegerField(default=0)
     application_url = models.URLField(max_length=500)
     source = models.CharField(max_length=255, blank=True)
-    external_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    external_id = models.CharField(max_length=255, blank=True, null=True)
     posted_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     skills = models.ManyToManyField(Skill, related_name='jobs', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "external_id"],
+                condition=models.Q(external_id__isnull=False),
+                name="unique_source_job_external_id",
+            ),
+        ]
 
     @staticmethod
     def normalize_title(value):
@@ -95,6 +104,34 @@ class Job(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class JobSourceListing(models.Model):
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="source_listings")
+    source = models.ForeignKey(
+        JobSource,
+        on_delete=models.CASCADE,
+        related_name="job_listings",
+    )
+    source_listing_id = models.CharField(max_length=255, blank=True)
+    source_url = models.URLField(max_length=1000, blank=True)
+    application_url = models.URLField(max_length=1000, blank=True)
+    raw_payload = models.JSONField(default=dict, blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "source_listing_id"],
+                condition=~models.Q(source_listing_id=""),
+                name="unique_source_listing_id",
+            ),
+        ]
+        ordering = ["-last_seen_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.source.slug}: {self.source_listing_id or self.source_url}"
 
 
 class JobIngestionLog(models.Model):

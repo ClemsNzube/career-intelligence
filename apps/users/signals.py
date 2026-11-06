@@ -1,10 +1,16 @@
-from django.db.models.signals import m2m_changed, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 
 from apps.intelligence.normalization.profile_skills import (
     sync_profile_skills_from_evidence,
 )
-from apps.users.models import CareerProfile, Experience, Project
+from apps.users.models import CVDocument, CareerProfile, Experience, Project
+
+
+@receiver(post_delete, sender=CVDocument, dispatch_uid="delete_cv_file_after_document_delete")
+def delete_cv_file_after_document_delete(sender, instance, **kwargs):
+    if instance.file:
+        instance.file.delete(save=False)
 
 
 @receiver(post_save, sender=CareerProfile, dispatch_uid="sync_profile_skills_after_profile_save")

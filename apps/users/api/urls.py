@@ -1,6 +1,12 @@
 from django.urls import path
 
 from .health import health_check
+from .cv_views import (
+    CVDocumentApproveAPIView,
+    CVDocumentDetailAPIView,
+    CVDocumentDownloadAPIView,
+    CVDocumentListCreateAPIView,
+)
 from .views import (
     CareerPreferencesDetailAPIView,
     CareerPreferencesListCreateAPIView,
@@ -19,6 +25,10 @@ from .views import (
 
 urlpatterns = [
     path('health/', health_check, name='health_check'),
+    path('cvs/', CVDocumentListCreateAPIView.as_view(), name='cv-list'),
+    path('cvs/<int:pk>/download/', CVDocumentDownloadAPIView.as_view(), name='cv-download'),
+    path('cvs/<int:pk>/approve/', CVDocumentApproveAPIView.as_view(), name='cv-approve'),
+    path('cvs/<int:pk>/', CVDocumentDetailAPIView.as_view(), name='cv-detail'),
     path('profiles/', CareerProfileListCreateAPIView.as_view(), name='profile-list'),
     path('profiles/<int:pk>/skill-suggestions/', CareerProfileSkillSuggestionsAPIView.as_view(), name='profile-skill-suggestions'),
     path('profiles/<int:pk>/', CareerProfileDetailAPIView.as_view(), name='profile-detail'),
