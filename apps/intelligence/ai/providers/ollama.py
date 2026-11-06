@@ -174,34 +174,89 @@ class OllamaIntelligenceProvider(StructuredIntelligenceProvider):
         if not isinstance(result, dict):
             raise AIProviderError("Ollama response content must be a JSON object.")
         if "candidate" in payload and isinstance(result.get("evaluations"), list):
-            candidate_text = payload["candidate"].get("cv_evidence", "")
-            jobs_by_id = {job["id"]: job for job in payload.get("jobs", [])}
-            for evaluation in result["evaluations"]:
-                if not isinstance(evaluation, dict):
+            self._sanitize_evaluation_evidence(result, payload)
+        return result
+
+    @staticmethod
+    def _sanitize_evaluation_evidence(
+        result: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        candidate_text = payload["candidate"].get("cv_evidence", "")
+        jobs_by_id = {job["id"]: job for job in payload.get("jobs", [])}
+        discarded = 0
+
+        for evaluation in result["evaluations"]:
+            if not isinstance(evaluation, dict):
+                continue
+            job = jobs_by_id.get(evaluation.get("job_id"))
+            evidence_items = evaluation.get("evidence")
+            if not isinstance(evidence_items, list):
+                continue
+
+            verified_items = []
+            for item in evidence_items:
+                if not isinstance(item, dict):
+                    discarded += 1
                     continue
-                job = jobs_by_id.get(evaluation.get("job_id"))
-                for evidence in evaluation.get("evidence", []):
-                    if not isinstance(evidence, dict) or "candidate_quote" in evidence:
-                        continue
-                    content = evidence.get("content")
-                    evidence_type = evidence.get("type")
+
+                candidate_quote = item.get("candidate_quote")
+                job_quote = item.get("job_quote")
+                if candidate_quote is None and job_quote is None:
+                    content = item.get("content")
+                    evidence_type = item.get("type")
                     if (
                         isinstance(content, str)
                         and evidence_type in {"candidate", "resume"}
-                        and content.casefold() in candidate_text.casefold()
                     ):
-                        evidence.clear()
-                        evidence.update(candidate_quote=content, job_quote="")
-                    elif (
-                        isinstance(content, str)
-                        and evidence_type == "job"
-                        and job is not None
-                        and content.casefold()
-                        in job.get("description", "").casefold()
-                    ):
-                        evidence.clear()
-                        evidence.update(candidate_quote="", job_quote=content)
-        return result
+                        candidate_quote = content
+                        job_quote = ""
+                    elif isinstance(content, str) and evidence_type == "job":
+                        candidate_quote = ""
+                        job_quote = content
+                    else:
+                        discarded += 1
+                        continue
+
+                if not isinstance(candidate_quote, str) or not isinstance(job_quote, str):
+                    discarded += 1
+                    continue
+
+                candidate_quote = candidate_quote.strip()
+                job_quote = job_quote.strip()
+                if (
+                    candidate_quote
+                    and candidate_quote.casefold() not in candidate_text.casefold()
+                ):
+                    candidate_quote = ""
+                    discarded += 1
+                if (
+                    job_quote
+                    and (
+                        job is None
+                        or job_quote.casefold()
+                        not in job.get("description", "").casefold()
+                    )
+                ):
+                    job_quote = ""
+                    discarded += 1
+                if candidate_quote or job_quote:
+                    verified_items.append(
+                        {
+                            "candidate_quote": candidate_quote,
+                            "job_quote": job_quote,
+                        }
+                    )
+                else:
+                    discarded += 1
+
+            evaluation["evidence"] = verified_items
+
+        if discarded:
+            logger.warning(
+                "Ollama returned unsupported evaluation evidence; discarded %s quote(s)",
+                discarded,
+            )
 
     def evaluate_jobs(
         self,

@@ -266,6 +266,59 @@ class OllamaIntelligenceProviderTests(SimpleTestCase):
             2,
         )
 
+    @patch("apps.intelligence.ai.providers.ollama.urlopen")
+    def test_unsupported_job_citation_is_dropped_without_failing_evaluation(self, urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "evaluations": [
+                                {
+                                    "job_id": 41,
+                                    "suitability_score": 82,
+                                    "strengths": ["Python experience"],
+                                    "missing_requirements": [],
+                                    "concerns": [],
+                                    "explanation": "Relevant Python experience.",
+                                    "evidence": [
+                                        {
+                                            "candidate_quote": "Built Python services.",
+                                            "job_quote": "Invented requirement.",
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    )
+                }
+            }
+        ).encode()
+        urlopen.return_value = response
+        job = SimpleNamespace(
+            pk=41,
+            title="Backend Engineer",
+            company_name="Example",
+            description="Build Python services.",
+            min_years_experience=2,
+            skills=SimpleNamespace(
+                values_list=lambda *args, **kwargs: ["Python"]
+            ),
+        )
+        provider = OllamaIntelligenceProvider()
+
+        result = provider.evaluate_jobs(
+            "Built Python services.",
+            {"skills": ["Python"]},
+            [job],
+        )
+
+        self.assertEqual(
+            result[41]["evidence"],
+            [{"candidate_quote": "Built Python services.", "job_quote": ""}],
+        )
+
     @patch(
         "apps.intelligence.ai.providers.ollama.urlopen",
         side_effect=TimeoutError("read timed out"),
