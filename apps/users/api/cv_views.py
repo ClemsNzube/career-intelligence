@@ -5,8 +5,9 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiRequest, extend_schema, extend_schema_view
 from rest_framework import generics, status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -16,9 +17,27 @@ from apps.users.api.cv_serializers import CVDocumentSerializer
 from apps.users.models import CVDocument, CareerProfile
 
 
+@extend_schema_view(
+    post=extend_schema(
+        request=OpenApiRequest(
+            request={
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                },
+                "required": ["file"],
+            }
+        ),
+        responses={201: CVDocumentSerializer},
+        summary="Upload a CV",
+        description="Upload a PDF or DOCX file for local text extraction and candidate review.",
+        tags=["Candidate CVs"],
+    )
+)
 class CVDocumentListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = CVDocumentSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
 
     def get_queryset(self):
         return CVDocument.objects.filter(user=self.request.user)

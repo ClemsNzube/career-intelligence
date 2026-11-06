@@ -21,7 +21,7 @@ from apps.recommendations.services.recommend_jobs import DEFAULT_RECOMMENDATION_
 from apps.users.models import CVDocument
 
 logger = logging.getLogger(__name__)
-AI_RERANK_SHORTLIST_SIZE = 10
+AI_RERANK_SHORTLIST_SIZE = 3
 AI_BLEND_WEIGHT = 0.25
 
 
@@ -42,7 +42,7 @@ class JobRecommendationsAPIView(GenericAPIView):
         summary="Get ranked job recommendations",
         description=(
             "Return recommendations using rule-based and semantic matching. "
-            "Set include_ai=true to explicitly evaluate and rerank the top ten "
+            "Set include_ai=true to explicitly evaluate and rerank the top three "
             "hybrid results against the user's latest approved CV, blending the "
             "hybrid score (75%) with AI suitability (25%). The configured provider "
             "is selected with AI_PROVIDER."
@@ -53,7 +53,7 @@ class JobRecommendationsAPIView(GenericAPIView):
                 OpenApiTypes.STR,
                 enum=["true", "false"],
                 description=(
-                    "Opt in to AI evaluation of the approved CV and top ten jobs. "
+                    "Opt in to AI evaluation of the approved CV and top three jobs. "
                     "Requires a configured AI provider and an approved CV."
                 ),
             )

@@ -130,6 +130,27 @@ class OpenAIJobEvaluationTests(TestCase):
         )
         self.assertEqual(request_payload["jobs"][0]["id"], self.job.pk)
 
+    def test_job_evaluation_normalizes_integral_float_score(self):
+        provider, _ = self._provider(
+            {
+                "evaluations": [
+                    {
+                        "job_id": self.job.pk,
+                        "suitability_score": 82.0,
+                        "strengths": [],
+                        "missing_requirements": [],
+                        "concerns": [],
+                        "explanation": "Relevant experience.",
+                        "evidence": [],
+                    }
+                ]
+            }
+        )
+
+        result = provider.evaluate_jobs("Candidate CV", {}, [self.job])
+
+        self.assertEqual(result[self.job.pk]["suitability_score"], 82)
+
     def test_job_evaluation_rejects_scores_for_unrequested_jobs(self):
         provider, _ = self._provider(
             {
@@ -213,8 +234,92 @@ class OllamaIntelligenceProviderTests(SimpleTestCase):
         self.assertEqual(body["model"], "test-model")
         self.assertEqual(body["format"], "json")
         self.assertFalse(body["stream"])
+        self.assertEqual(body["options"]["num_ctx"], 4096)
+        self.assertEqual(body["options"]["num_predict"], 768)
         self.assertEqual(result["extraction_method"], "ollama")
         self.assertTrue(result["review_required"])
+
+    def test_evaluation_response_schema_restricts_job_ids_and_score_shapes(self):
+        response_schema = OllamaIntelligenceProvider._response_format(
+            {
+                "candidate": {},
+                "jobs": [{"id": 41}, {"id": 73}],
+            }
+        )
+        evaluation_schema = response_schema["properties"]["evaluations"]["items"]
+
+        self.assertEqual(evaluation_schema["properties"]["job_id"]["enum"], [41, 73])
+        self.assertEqual(
+            evaluation_schema["properties"]["suitability_score"]["minimum"],
+            0,
+        )
+        self.assertEqual(
+            evaluation_schema["properties"]["suitability_score"]["maximum"],
+            100,
+        )
+        self.assertEqual(
+            response_schema["properties"]["evaluations"]["minItems"],
+            2,
+        )
+        self.assertEqual(
+            response_schema["properties"]["evaluations"]["maxItems"],
+            2,
+        )
+
+    @patch(
+        "apps.intelligence.ai.providers.ollama.urlopen",
+        side_effect=TimeoutError("read timed out"),
+    )
+    def test_inference_timeout_is_distinguished_from_connection_failure(self, _urlopen):
+        provider = OllamaIntelligenceProvider(timeout=600)
+
+        with self.assertRaisesRegex(
+            AIProviderUnavailableError,
+            "did not finish its response within 600 seconds",
+        ):
+            provider._complete_json("system", {})
+
+    def test_job_evaluation_trims_inputs_for_small_local_models(self):
+        skills = SimpleNamespace(
+            values_list=lambda *args, **kwargs: ["Python", "Django"]
+        )
+        job = SimpleNamespace(
+            pk=12,
+            title="Backend Engineer",
+            company_name="Example",
+            description="D" * 10_000,
+            min_years_experience=2,
+            skills=skills,
+        )
+        provider = OllamaIntelligenceProvider()
+        evaluation = {
+            "suitability_score": 90,
+            "strengths": [],
+            "missing_requirements": [],
+            "concerns": [],
+            "explanation": "Relevant experience.",
+            "evidence": [],
+        }
+
+        with patch.object(
+            provider,
+            "_complete_json",
+            return_value={"evaluations": [{"job_id": 12, **evaluation}]},
+        ) as complete:
+            result = provider.evaluate_jobs(
+                "C" * 20_000,
+                {"summary": "S" * 2_000, "skills": ["K" * 1_000] * 40},
+                [job],
+            )
+
+        payload = complete.call_args.args[1]
+        self.assertLessEqual(len(payload["candidate"]["cv_evidence"]), 3_000)
+        self.assertLessEqual(len(payload["jobs"][0]["description"]), 1_200)
+        self.assertLessEqual(
+            len(payload["candidate"]["approved_structured_data"]["summary"]),
+            250,
+        )
+        self.assertEqual(result[12]["suitability_score"], 90)
 
     @patch(
         "apps.intelligence.ai.providers.ollama.urlopen",

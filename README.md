@@ -149,16 +149,18 @@ The default AI provider is local Ollama. Install Ollama using its official
 instructions, then start the Ollama service and download the configured model:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen2.5:1.5b
 ```
 
 The app connects to `OLLAMA_BASE_URL` (default `http://localhost:11434`), using
 `OLLAMA_MODEL` and a bounded `OLLAMA_TIMEOUT`. No Ollama request is made during
 normal recommendations. To opt in, call
 `GET /api/recommendations/?include_ai=true` with an approved CV. Ollama
-evaluates and reranks up to ten hybrid recommendations, blending the existing
+evaluates and reranks up to three hybrid recommendations, blending the existing
 hybrid score (75%) with AI suitability (25%). If Ollama is not running or the
-model is missing, the endpoint returns an explicit service-unavailable error;
+model is missing, the endpoint returns an explicit service-unavailable error.
+For smaller local models, candidate and job context is trimmed and generation
+is capped to keep requests within a small context window;
 it does not silently switch providers or alter the ordinary recommendation
 scores.
 

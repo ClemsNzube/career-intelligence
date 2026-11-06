@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from drf_spectacular.generators import SchemaGenerator
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from rest_framework import status
@@ -41,6 +42,18 @@ class CVDocumentAPITests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         self.list_url = reverse("cv-list")
+
+    def test_cv_upload_schema_exposes_a_multipart_file_picker(self):
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        request_body = schema["paths"]["/api/cvs/"]["post"]["requestBody"]
+        upload_schema = request_body["content"]["multipart/form-data"]["schema"]
+
+        self.assertEqual(set(request_body["content"]), {"multipart/form-data"})
+        self.assertEqual(
+            upload_schema["properties"]["file"]["format"],
+            "binary",
+        )
+        self.assertIn("file", upload_schema["required"])
 
     @staticmethod
     def make_docx():

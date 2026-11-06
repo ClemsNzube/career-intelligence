@@ -99,7 +99,9 @@ class StructuredIntelligenceProvider(
                 "(string), and evidence (array of objects with candidate_quote and job_quote). "
                 "candidate_quote must be copied exactly from cv_evidence and job_quote "
                 "must be copied exactly from that job's description. Use empty quotes if "
-                "there is no direct supporting evidence."
+                "there is no direct supporting evidence. Return exactly one evaluation for "
+                "each requested job ID, copy each integer ID unchanged, do not repeat IDs, "
+                "and output scores as integers, never decimals."
             ),
             {
                 "candidate": {
@@ -124,15 +126,19 @@ class StructuredIntelligenceProvider(
                     "The AI provider returned an invalid job identifier."
                 ) from exc
             score = evaluation.get("suitability_score")
+            if job_id not in jobs_by_id:
+                raise AIProviderError("The AI provider returned an unknown job identifier.")
+            if job_id in result_by_id:
+                raise AIProviderError("The AI provider returned a duplicate job identifier.")
+            if isinstance(score, float) and score.is_integer():
+                score = int(score)
             if (
                 not isinstance(score, int)
                 or isinstance(score, bool)
-                or job_id not in jobs_by_id
-                or job_id in result_by_id
                 or not 0 <= score <= 100
             ):
                 raise AIProviderError(
-                    "The AI provider returned an out-of-range or duplicate job score."
+                    "The AI provider returned an invalid score; it must be an integer from 0 to 100."
                 )
 
             strengths = self._strings(evaluation.get("strengths", []), "strengths")
@@ -152,8 +158,8 @@ class StructuredIntelligenceProvider(
             for item in evidence:
                 if not isinstance(item, dict):
                     raise AIProviderError("The AI provider returned invalid evidence.")
-                candidate_quote = item.get("candidate_quote", "")
-                job_quote = item.get("job_quote", "")
+                candidate_quote = item.get("candidate_quote")
+                job_quote = item.get("job_quote")
                 if not isinstance(candidate_quote, str) or not isinstance(job_quote, str):
                     raise AIProviderError("The AI provider returned invalid evidence quotes.")
                 if (
