@@ -74,6 +74,10 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5433
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_TIMEOUT=120
 ```
 
 Generate a suitable local secret with:
@@ -127,30 +131,42 @@ are saved as editable candidate suggestions and do not change a career profile
 until the owner calls the approve endpoint. Original CV downloads are served
 through an authenticated, owner-scoped endpoint.
 
-The default candidate extractor is rule-based and does not require an LLM. The
-document parser and candidate-intelligence extractor are separate services, so
-a provider can be configured with the dotted class path in
-`CV_CANDIDATE_INTELLIGENCE_PROVIDER` without changing upload or review behavior.
-Configured providers must implement `CandidateIntelligenceProvider`; no CV text
-is sent to an external AI service by default.
+The default candidate extractor is rule-based and does not require an LLM. CV
+text is not sent to OpenAI or Ollama unless
+`CV_CANDIDATE_INTELLIGENCE_PROVIDER` is explicitly configured. To use Ollama
+for CV interpretation, run Ollama locally, pull the configured model, and set:
 
-### Optional OpenAI intelligence
+```dotenv
+CV_CANDIDATE_INTELLIGENCE_PROVIDER=apps.intelligence.ai.providers.ollama.OllamaIntelligenceProvider
+```
 
-Install dependencies from `requirements.txt`, set `OPENAI_API_KEY` in the
-untracked local `.env`, and set
-`CV_CANDIDATE_INTELLIGENCE_PROVIDER=apps.intelligence.ai.providers.openai.OpenAIIntelligenceProvider`
-to use OpenAI for CV interpretation. Without that provider setting, CV uploads
-continue to use the local rule-based extractor. OpenAI interpretation sends CV
-text to OpenAI and should only be enabled with the user's informed consent.
+The original CV remains private, and extracted suggestions still require user
+review and approval before updating the career profile.
 
-For AI job evaluation, explicitly request
-`GET /api/recommendations/?include_ai=true`. This requires an approved CV and
-`OPENAI_API_KEY`. The engine evaluates and reranks the top ten hybrid
-recommendations, blending the existing hybrid score (75%) with AI suitability
-(25%). The AI evaluation is an additional signal, not a substitute for the
-existing matching explanation. Requests without `include_ai=true` make no
-OpenAI call and preserve the existing scores and ranking. AI failures return an
-explicit error; they do not silently fall back to a success-shaped response.
+### Optional AI job evaluation
+
+The default AI provider is local Ollama. Install Ollama using its official
+instructions, then start the Ollama service and download the configured model:
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+The app connects to `OLLAMA_BASE_URL` (default `http://localhost:11434`), using
+`OLLAMA_MODEL` and a bounded `OLLAMA_TIMEOUT`. No Ollama request is made during
+normal recommendations. To opt in, call
+`GET /api/recommendations/?include_ai=true` with an approved CV. Ollama
+evaluates and reranks up to ten hybrid recommendations, blending the existing
+hybrid score (75%) with AI suitability (25%). If Ollama is not running or the
+model is missing, the endpoint returns an explicit service-unavailable error;
+it does not silently switch providers or alter the ordinary recommendation
+scores.
+
+To select OpenAI instead, set `AI_PROVIDER=openai` and configure
+`OPENAI_API_KEY` and optionally `OPENAI_MODEL`. OpenAI is never selected
+automatically. OpenAI evaluation sends the approved CV text and job descriptions
+to OpenAI and may incur API charges. Requests without `include_ai=true` make no
+LLM call and preserve existing scores and ranking.
 
 The recommendation endpoint requires authentication and a career profile for
 the authenticated user. Use `?limit=10` to request a page size from 1 to 50;

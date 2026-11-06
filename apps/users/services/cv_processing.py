@@ -8,7 +8,7 @@ from apps.users.services.cv_parser import (
     RuleBasedCandidateExtractor,
     extract_cv_text,
 )
-from apps.intelligence.ai.providers.openai import AIProviderError
+from apps.intelligence.ai.providers.base import AIProviderError
 
 
 def process_cv_document(

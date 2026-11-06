@@ -1,9 +1,13 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
+from urllib.error import URLError
 
 from django.test import SimpleTestCase, TestCase, override_settings
 
+from apps.intelligence.ai.providers import get_intelligence_provider
+from apps.intelligence.ai.providers.base import AIProviderUnavailableError
+from apps.intelligence.ai.providers.ollama import OllamaIntelligenceProvider
 from apps.intelligence.ai.providers.openai import (
     AIProviderConfigurationError,
     AIProviderError,
@@ -170,3 +174,63 @@ class OpenAIJobEvaluationTests(TestCase):
 
         with self.assertRaises(AIProviderError):
             provider.evaluate_jobs("Candidate CV", {}, [self.job])
+
+
+class OllamaIntelligenceProviderTests(SimpleTestCase):
+    def _response(self, content):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(
+            {"message": {"content": json.dumps(content)}}
+        ).encode()
+        return response
+
+    @patch("apps.intelligence.ai.providers.ollama.urlopen")
+    def test_chat_request_uses_configured_local_model_and_json_mode(self, urlopen):
+        urlopen.return_value = self._response(
+            {
+                "summary": "Backend engineer",
+                "skills": ["Python"],
+                "transferable_skills": [],
+                "achievements": [],
+                "experience": [],
+                "education": [],
+                "projects": [],
+                "career_level": "Senior",
+            }
+        )
+        provider = OllamaIntelligenceProvider(
+            base_url="http://localhost:11434/",
+            model="test-model",
+            timeout=17,
+        )
+
+        result = provider.extract("Built Python services.")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data)
+        self.assertEqual(request.full_url, "http://localhost:11434/api/chat")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 17)
+        self.assertEqual(body["model"], "test-model")
+        self.assertEqual(body["format"], "json")
+        self.assertFalse(body["stream"])
+        self.assertEqual(result["extraction_method"], "ollama")
+        self.assertTrue(result["review_required"])
+
+    @patch(
+        "apps.intelligence.ai.providers.ollama.urlopen",
+        side_effect=URLError("connection refused"),
+    )
+    def test_connection_failure_is_reported_as_provider_unavailable(self, _urlopen):
+        provider = OllamaIntelligenceProvider()
+
+        with self.assertRaises(AIProviderUnavailableError):
+            provider._complete_json("system", {})
+
+    @override_settings(AI_PROVIDER="ollama")
+    def test_factory_selects_ollama_by_default_provider_setting(self):
+        self.assertIsInstance(get_intelligence_provider(), OllamaIntelligenceProvider)
+
+    @override_settings(AI_PROVIDER="unsupported")
+    def test_factory_rejects_unknown_provider(self):
+        with self.assertRaises(AIProviderConfigurationError):
+            get_intelligence_provider()

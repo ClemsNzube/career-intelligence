@@ -2,6 +2,18 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class AIProviderError(RuntimeError):
+    pass
+
+
+class AIProviderConfigurationError(AIProviderError):
+    pass
+
+
+class AIProviderUnavailableError(AIProviderError):
+    pass
+
+
 class JobEvaluationProvider(ABC):
     @abstractmethod
     def evaluate_jobs(

@@ -21,7 +21,11 @@ from apps.intelligence.embeddings.services import (
 from apps.jobs.models import Job
 from apps.skills.models import Skill
 from apps.users.models import CVDocument, CareerPreferences, CareerProfile, Experience
-from apps.intelligence.ai.providers.openai import AIProviderError, OpenAIIntelligenceProvider
+from apps.intelligence.ai.providers.base import (
+    AIProviderError,
+    AIProviderUnavailableError,
+)
+from apps.intelligence.ai.providers.openai import OpenAIIntelligenceProvider
 
 
 class JobRecommendationsAPITests(APITestCase):
@@ -183,7 +187,11 @@ class JobRecommendationsAPITests(APITestCase):
             )
         }
         with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root, OPENAI_API_KEY="test-key"):
+            with override_settings(
+                MEDIA_ROOT=media_root,
+                AI_PROVIDER="openai",
+                OPENAI_API_KEY="test-key",
+            ):
                 document = CVDocument.objects.create(
                     user=self.user,
                     file=ContentFile(b"approved CV", name="approved.docx"),
@@ -223,14 +231,14 @@ class JobRecommendationsAPITests(APITestCase):
             sorted((item["score"] for item in results), reverse=True),
         )
 
-    @override_settings(OPENAI_API_KEY="test-key")
+    @override_settings(AI_PROVIDER="openai", OPENAI_API_KEY="test-key")
     def test_ai_evaluation_requires_an_approved_cv(self):
         response = self.client.get("/api/recommendations/?include_ai=true")
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertIn("Approve a CV", response.data["detail"])
 
-    @override_settings(OPENAI_API_KEY="")
+    @override_settings(AI_PROVIDER="openai", OPENAI_API_KEY="")
     def test_ai_evaluation_requires_provider_configuration(self):
         response = self.client.get("/api/recommendations/?include_ai=true")
 
@@ -246,7 +254,7 @@ class JobRecommendationsAPITests(APITestCase):
         self.assertEqual(invalid_flag.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(second_page.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @override_settings(OPENAI_API_KEY="test-key")
+    @override_settings(AI_PROVIDER="openai", OPENAI_API_KEY="test-key")
     def test_ai_provider_failure_is_reported_without_changing_normal_endpoint(self):
         with tempfile.TemporaryDirectory() as media_root:
             with override_settings(MEDIA_ROOT=media_root):
@@ -272,6 +280,34 @@ class JobRecommendationsAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
         self.assertIn("AI evaluation failed", response.data["detail"])
+
+    @override_settings(AI_PROVIDER="ollama")
+    def test_unavailable_ollama_returns_service_unavailable(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                document = CVDocument.objects.create(
+                    user=self.user,
+                    file=ContentFile(b"approved CV", name="approved.docx"),
+                    original_filename="approved.docx",
+                    status=CVDocument.Status.APPROVED,
+                    extracted_text="Built Python services.",
+                    extracted_data={"skills": ["Python"]},
+                )
+                try:
+                    with patch(
+                        "apps.recommendations.api.views.get_intelligence_provider"
+                    ) as get_provider:
+                        get_provider.return_value.evaluate_jobs.side_effect = (
+                            AIProviderUnavailableError("Start Ollama first.")
+                        )
+                        response = self.client.get(
+                            "/api/recommendations/?include_ai=true"
+                        )
+                finally:
+                    document.delete()
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data["detail"], "Start Ollama first.")
 
     def test_experience_skills_and_career_preferences_drive_recommendations(self):
         self.profile.skills.clear()

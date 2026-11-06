@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -10,10 +9,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.applications.models import JobApplication
-from apps.intelligence.ai.providers.openai import (
+from apps.intelligence.ai.providers import get_intelligence_provider
+from apps.intelligence.ai.providers.base import (
     AIProviderConfigurationError,
     AIProviderError,
-    OpenAIIntelligenceProvider,
+    AIProviderUnavailableError,
 )
 from apps.jobs.models import Job
 from apps.recommendations.api.serializers import RecommendationSerializer
@@ -44,7 +44,8 @@ class JobRecommendationsAPIView(GenericAPIView):
             "Return recommendations using rule-based and semantic matching. "
             "Set include_ai=true to explicitly evaluate and rerank the top ten "
             "hybrid results against the user's latest approved CV, blending the "
-            "hybrid score (75%) with AI suitability (25%)."
+            "hybrid score (75%) with AI suitability (25%). The configured provider "
+            "is selected with AI_PROVIDER."
         ),
         parameters=[
             OpenApiParameter(
@@ -52,8 +53,8 @@ class JobRecommendationsAPIView(GenericAPIView):
                 OpenApiTypes.STR,
                 enum=["true", "false"],
                 description=(
-                    "Opt in to OpenAI evaluation of the approved CV and top ten jobs. "
-                    "Requires OPENAI_API_KEY and an approved CV."
+                    "Opt in to AI evaluation of the approved CV and top ten jobs. "
+                    "Requires a configured AI provider and an approved CV."
                 ),
             )
         ],
@@ -90,17 +91,18 @@ class JobRecommendationsAPIView(GenericAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if include_ai and not getattr(settings, "OPENAI_API_KEY", ""):
-            return Response(
-                {"detail": "AI evaluation is unavailable; configure OPENAI_API_KEY."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
         recommendations = get_recommended_jobs(request.user, limit=None)
         if recommendations is None:
             return Response({"detail": "No career profile found for this user."}, status=status.HTTP_404_NOT_FOUND)
 
         if include_ai:
+            try:
+                provider = get_intelligence_provider()
+            except AIProviderConfigurationError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             candidate_document = (
                 CVDocument.objects.filter(
                     user=request.user,
@@ -119,7 +121,6 @@ class JobRecommendationsAPIView(GenericAPIView):
                     status=status.HTTP_409_CONFLICT,
                 )
             try:
-                provider = OpenAIIntelligenceProvider()
                 shortlist = recommendations[:AI_RERANK_SHORTLIST_SIZE]
                 evaluations = provider.evaluate_jobs(
                     candidate_text=candidate_document.extracted_text,
@@ -127,6 +128,15 @@ class JobRecommendationsAPIView(GenericAPIView):
                     jobs=[item["job"] for item in shortlist],
                 )
             except AIProviderConfigurationError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            except AIProviderUnavailableError as exc:
+                logger.warning(
+                    "AI recommendation provider unavailable for user_id=%s",
+                    request.user.pk,
+                )
                 return Response(
                     {"detail": str(exc)},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
